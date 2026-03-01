@@ -8,6 +8,10 @@ enum DictationState: Equatable {
     case error(String)
 }
 
+enum DictationEvent: Equatable {
+    case clipboardFallbackNotice(String)
+}
+
 enum DictationError: LocalizedError {
     case missingAPIKey
     case permissionDenied(String)
@@ -43,6 +47,7 @@ actor DictationCoordinator {
     private let minimumPressDuration: TimeInterval
     private let errorDisplayDuration: UInt64
     private let stateDidChange: @Sendable (DictationState) -> Void
+    private let eventDidOccur: @Sendable (DictationEvent) -> Void
 
     private var state: DictationState = .idle
     private var recordingURL: URL?
@@ -58,7 +63,8 @@ actor DictationCoordinator {
         config: AppConfig,
         minimumPressDuration: TimeInterval = 0.15,
         errorDisplayDuration: UInt64 = 1_200_000_000,
-        stateDidChange: @escaping @Sendable (DictationState) -> Void
+        stateDidChange: @escaping @Sendable (DictationState) -> Void,
+        eventDidOccur: @escaping @Sendable (DictationEvent) -> Void = { _ in }
     ) {
         self.audioCapture = audioCapture
         self.transcriptionClient = transcriptionClient
@@ -71,6 +77,7 @@ actor DictationCoordinator {
         self.minimumPressDuration = minimumPressDuration
         self.errorDisplayDuration = errorDisplayDuration
         self.stateDidChange = stateDidChange
+        self.eventDidOccur = eventDidOccur
     }
 
     func currentState() -> DictationState {
@@ -117,11 +124,13 @@ actor DictationCoordinator {
             if focusResolver.isEditableElementFocused() {
                 try textInserter.insert(transcript)
             } else {
+                let fallbackMessage = "No cursor found. Copied to clipboard."
                 clipboard.copy(transcript)
                 notifier.notify(
                     title: "NativeWhisper",
                     body: "No editable field focused. Transcript copied to clipboard."
                 )
+                eventDidOccur(.clipboardFallbackNotice(fallbackMessage))
             }
 
             try? FileManager.default.removeItem(at: audioURL)

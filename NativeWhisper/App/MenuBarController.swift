@@ -14,6 +14,16 @@ final class MenuBarController: ObservableObject {
         }
     }
 
+    private final class DictationEventSink: @unchecked Sendable {
+        weak var controller: MenuBarController?
+
+        func publish(_ event: DictationEvent) {
+            Task { @MainActor [weak controller] in
+                controller?.applyEventUpdate(event)
+            }
+        }
+    }
+
     @Published private(set) var dictationState: DictationState = .idle
     @Published private(set) var permissionSnapshot: PermissionSnapshot
     @Published private(set) var monitorErrorMessage: String?
@@ -25,9 +35,11 @@ final class MenuBarController: ObservableObject {
     private let hudController: RecordingHUDControlling
     private let audioCapture: AudioCapturing
     private let stateSink: DictationStateSink
+    private let eventSink: DictationEventSink
     private let coordinator: DictationCoordinator
 
     private var meterTask: Task<Void, Never>?
+    private var hudMessageTask: Task<Void, Never>?
     private var smoothedLevel: Float = 0.08
     private var smoothedBands: [Float] = Array(repeating: 0.08, count: 5)
     private var started = false
@@ -55,6 +67,7 @@ final class MenuBarController: ObservableObject {
         self.chimeService = chimeService
         self.hudController = hudController
         self.stateSink = DictationStateSink()
+        self.eventSink = DictationEventSink()
         self.permissionSnapshot = permissionService.snapshot()
 
         let transcriptionClient = OpenAITranscriptionClient(config: config)
@@ -69,10 +82,14 @@ final class MenuBarController: ObservableObject {
             config: config,
             stateDidChange: { [weak stateSink] newState in
                 stateSink?.publish(newState)
+            },
+            eventDidOccur: { [weak eventSink] event in
+                eventSink?.publish(event)
             }
         )
 
         stateSink.controller = self
+        eventSink.controller = self
 
         fnMonitor.onEvent = { [weak self] event in
             self?.handleFnEvent(event)
@@ -87,6 +104,7 @@ final class MenuBarController: ObservableObject {
 
     deinit {
         meterTask?.cancel()
+        hudMessageTask?.cancel()
     }
 
     var menuIconName: String {
@@ -158,6 +176,8 @@ final class MenuBarController: ObservableObject {
     func quitApp() {
         meterTask?.cancel()
         meterTask = nil
+        hudMessageTask?.cancel()
+        hudMessageTask = nil
         hudController.hide()
         fnMonitor.stop()
         NSApplication.shared.terminate(nil)
@@ -167,6 +187,13 @@ final class MenuBarController: ObservableObject {
         let oldState = dictationState
         dictationState = newState
         handleStateTransition(from: oldState, to: newState)
+    }
+
+    func applyEventUpdate(_ event: DictationEvent) {
+        switch event {
+        case .clipboardFallbackNotice(let message):
+            showTransientHUDMessage(message)
+        }
     }
 
     private func handleFnEvent(_ event: FnKeyEvent) {
@@ -190,6 +217,7 @@ final class MenuBarController: ObservableObject {
         let isTranscribing = isTranscribingState(newState)
 
         if !wasRecording && isRecording {
+            cancelHUDMessageTask()
             chimeService.playStartChime()
             hudController.setMode(.recording)
             hudController.update(bands: Array(repeating: 0.08, count: 5))
@@ -210,6 +238,7 @@ final class MenuBarController: ObservableObject {
         }
 
         if !wasTranscribing && isTranscribing {
+            cancelHUDMessageTask()
             hudController.setMode(.transcribing)
             hudController.show()
             return
@@ -218,6 +247,36 @@ final class MenuBarController: ObservableObject {
         if wasTranscribing && !isTranscribing {
             hudController.hide()
         }
+    }
+
+    private func showTransientHUDMessage(_ message: String) {
+        cancelHUDMessageTask()
+
+        hudController.setMode(.message(message))
+        hudController.show()
+
+        hudMessageTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+
+            guard !Task.isCancelled else {
+                return
+            }
+
+            if isRecordingState(dictationState) || isTranscribingState(dictationState) {
+                return
+            }
+
+            hudController.hide()
+        }
+    }
+
+    private func cancelHUDMessageTask() {
+        hudMessageTask?.cancel()
+        hudMessageTask = nil
     }
 
     private func startMeterPolling() {

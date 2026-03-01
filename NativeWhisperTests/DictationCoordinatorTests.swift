@@ -46,6 +46,7 @@ final class DictationCoordinatorTests: XCTestCase {
         let inserter = MockTextInserter()
         let focus = MockFocusResolver(isEditable: false)
         let clipboard = MockClipboardService()
+        let events = MockEventCollector()
         let permissions = MockPermissionService(
             snapshot: PermissionSnapshot(microphone: .granted, accessibility: .granted, inputMonitoring: .granted)
         )
@@ -62,7 +63,10 @@ final class DictationCoordinatorTests: XCTestCase {
             config: AppConfig(openAIKey: "test-key", model: "whisper-1", language: "en"),
             minimumPressDuration: 0,
             errorDisplayDuration: 0,
-            stateDidChange: { _ in }
+            stateDidChange: { _ in },
+            eventDidOccur: { event in
+                events.append(event)
+            }
         )
 
         await coordinator.handleFnPressed()
@@ -71,6 +75,7 @@ final class DictationCoordinatorTests: XCTestCase {
         XCTAssertEqual(inserter.insertedTexts.count, 0)
         XCTAssertEqual(clipboard.copiedTexts, ["clipboard text"])
         XCTAssertTrue(notifier.messages.contains(where: { $0.body.contains("copied to clipboard") }))
+        XCTAssertTrue(events.contains(.clipboardFallbackNotice("No cursor found. Copied to clipboard.")))
     }
 
     func testShortPressSkipsTranscription() async {
@@ -261,5 +266,22 @@ private final class MockNotifier: Notifying, @unchecked Sendable {
 
     func notify(title: String, body: String) {
         messages.append((title, body))
+    }
+}
+
+private final class MockEventCollector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [DictationEvent] = []
+
+    func append(_ event: DictationEvent) {
+        lock.lock()
+        events.append(event)
+        lock.unlock()
+    }
+
+    func contains(_ event: DictationEvent) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return events.contains(event)
     }
 }

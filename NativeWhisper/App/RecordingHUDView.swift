@@ -1,8 +1,9 @@
 import SwiftUI
 
-enum RecordingHUDMode {
+enum RecordingHUDMode: Equatable {
     case recording
     case transcribing
+    case message(String)
 }
 
 @MainActor
@@ -32,12 +33,18 @@ struct RecordingHUDView: View {
                     .frame(height: 18)
                     .animation(.easeOut(duration: 0.08), value: model.bands)
                 }
-            } else {
+            } else if model.mode == .transcribing {
                 Text("Transcribing")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+            } else if case let .message(text) = model.mode {
+                Text(text)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
