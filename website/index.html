@@ -72,11 +72,11 @@
       <div class="philosophy-list">
         <article>
           <h3>No stored recordings or transcripts</h3>
-          <p>Whisper Anywhere does not store your recordings or transcribed text locally or on any third-party server.</p>
+          <p>Whisper Anywhere does not persist your audio recordings or transcript text in app storage or backend storage.</p>
         </article>
         <article>
-          <h3>Your key, your transcription request</h3>
-          <p>Your dictation data is sent only to the OpenAI Transcription API using the API key you provide.</p>
+          <h3>OpenAI-only transcription path</h3>
+          <p>Your dictation request is sent to the OpenAI Transcription API through Whisper Anywhere backend endpoints.</p>
         </article>
       </div>
     </section>
@@ -88,11 +88,15 @@
       <div class="faq-list">
         <details>
           <summary>What do I need to run Whisper Anywhere?</summary>
-          <p>macOS 14+, microphone permission, accessibility permission, input monitoring permission, and an OpenAI API key.</p>
+          <p>macOS 14+, microphone permission, accessibility permission, input monitoring permission, and a Whisper Anywhere account sign-in.</p>
         </details>
         <details>
           <summary>How do I start dictation?</summary>
           <p>Place your cursor in a text field, hold <code>Fn</code>, speak, then release <code>Fn</code>.</p>
+        </details>
+        <details>
+          <summary>Do I need to enter my own OpenAI API key?</summary>
+          <p>No. Hosted mode uses Whisper Anywhere server-side keys. You only sign in with email.</p>
         </details>
         <details>
           <summary>What if there is no active text cursor?</summary>

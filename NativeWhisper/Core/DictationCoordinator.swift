@@ -188,6 +188,10 @@ actor DictationCoordinator {
             return .apiFailure(apiError.localizedDescription)
         }
 
+        if let backendError = error as? BackendTranscriptionError {
+            return .apiFailure(backendError.localizedDescription)
+        }
+
         return .apiFailure(error.localizedDescription)
     }
 
