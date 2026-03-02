@@ -100,9 +100,17 @@ main {
 
 .hero h1 {
   margin: 0;
-  font-size: clamp(2.6rem, 6.8vw, 5.2rem);
+  font-size: clamp(2.5rem, 5.8vw, 4.6rem);
   line-height: 1.04;
   letter-spacing: -0.02em;
+}
+
+.hero h1 .headline-line {
+  display: block;
+}
+
+.hero h1 .headline-line-1 {
+  white-space: nowrap;
 }
 
 .subhead {
@@ -325,6 +333,10 @@ details a {
     align-items: flex-start;
     flex-direction: column;
     gap: 0.45rem;
+  }
+
+  .hero h1 {
+    font-size: clamp(1.4rem, 8vw, 2.9rem);
   }
 
   .nav-links {
