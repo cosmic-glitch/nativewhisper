@@ -11,55 +11,48 @@ struct ConfigurationView: View {
     @State private var isVerifying = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Configuration")
-                .font(.system(size: 20, weight: .semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                headerSection
 
-            Text(configurationSubtitle)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-
-            Divider()
-
-            if controller.hostedModeEnabled {
-                hostedAuthSection
-            }
-
-            if !controller.hostedModeEnabled || controller.shouldShowLegacyAPIKeyEntry {
-                if controller.hostedModeEnabled {
-                    Divider()
-                }
-
-                legacyAPIKeySection
-            }
-
-            Divider()
-
-            permissionsSection
-
-            Divider()
-
-            HStack(spacing: 8) {
-                Button("Test Permissions") {
-                    controller.testPermissions()
-                }
-
-                Button("Refresh") {
-                    controller.refreshPermissions()
-                    Task {
-                        await controller.refreshQuotaStatus()
+                setupStep(
+                    number: 1,
+                    title: "Sign in",
+                    state: accountStepDone ? .done : .actionNeeded,
+                    detail: accountStepDetail,
+                    content: {
+                        accountStepContent
                     }
+                )
+
+                setupStep(
+                    number: 2,
+                    title: "Grant permissions",
+                    state: permissionsStepDone ? .done : .actionNeeded,
+                    detail: permissionsStepDetail,
+                    content: {
+                        permissionsStepContent
+                    }
+                )
+
+                setupStep(
+                    number: 3,
+                    title: "Start dictating",
+                    state: readyStepDone ? .done : .actionNeeded,
+                    detail: readyStepDetail,
+                    content: {
+                        readyStepContent
+                    }
+                )
+
+                if !controller.hostedModeEnabled || controller.shouldShowLegacyAPIKeyEntry {
+                    advancedSection
                 }
-
-                Spacer()
-
-                Text("Overall Status: \(controller.statusText)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
-        .frame(minWidth: 620, minHeight: 560)
+        .frame(minWidth: 660, minHeight: 620)
         .onAppear {
             controller.refreshPermissions()
             apiKeyDraft = controller.currentAPIKey()
@@ -75,131 +68,113 @@ struct ConfigurationView: View {
         }
     }
 
-    private var configurationSubtitle: String {
-        if controller.hostedModeEnabled {
-            return "Sign in with email and verify required permissions."
-        }
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Setup Whisper Anywhere")
+                .font(.system(size: 22, weight: .semibold))
 
-        return "Set your OpenAI API key and verify required permissions."
+            Text("Follow these steps once. After setup, place your cursor in any text field, hold Fn, speak, then release Fn.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+        }
     }
 
-    private var hostedAuthSection: some View {
+    private var accountStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Account")
-                .font(.system(size: 13, weight: .semibold))
+            if controller.hostedModeEnabled {
+                Text("Step 1a: Enter your email")
+                    .font(.system(size: 12, weight: .medium))
 
-            Text("Backend: \(controller.backendURLText)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                TextField("name@example.com", text: $emailDraft)
+                    .textFieldStyle(.roundedBorder)
+                    .disableAutocorrection(true)
 
-            Text("Status: \(controller.authSummaryText)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button(isSendingCode ? "Sending..." : "Send code") {
+                        guard !isSendingCode else {
+                            return
+                        }
 
-            Text("Turnstile: \(controller.turnstileStatusText)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            if controller.turnstileConfigured {
-                Text("Send Code will open a short security check window.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            if !controller.quotaSummaryText.isEmpty {
-                Text(controller.quotaSummaryText)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            TextField("Email", text: $emailDraft)
-                .textFieldStyle(.roundedBorder)
-                .disableAutocorrection(true)
-
-            SecureField("Verification code", text: $otpDraft)
-                .textFieldStyle(.roundedBorder)
-
-            HStack(spacing: 8) {
-                Button(isSendingCode ? "Sending..." : "Send Code") {
-                    guard !isSendingCode else {
-                        return
+                        isSendingCode = true
+                        Task {
+                            await controller.sendSignInCode(email: emailDraft)
+                            isSendingCode = false
+                        }
                     }
+                    .disabled(isSendingCode || emailDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                    isSendingCode = true
-                    Task {
-                        await controller.sendSignInCode(email: emailDraft)
-                        isSendingCode = false
-                    }
-                }
-                .disabled(isSendingCode)
-
-                Button(isVerifying ? "Signing In..." : "Sign In") {
-                    guard !isVerifying else {
-                        return
-                    }
-
-                    isVerifying = true
-                    Task {
-                        await controller.verifySignInCode(email: emailDraft, otp: otpDraft)
-                        isVerifying = false
-                    }
-                }
-                .disabled(isVerifying)
-
-                Button("Refresh Quota") {
-                    Task {
-                        await controller.refreshQuotaStatus()
-                    }
-                }
-
-                Button("Sign Out") {
-                    controller.signOutHostedSession()
-                }
-
-                Spacer()
-            }
-
-            if let message = controller.authStatusMessage {
-                Text(message)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var legacyAPIKeySection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("OpenAI API Key")
-                .font(.system(size: 13, weight: .semibold))
-
-            SecureField("sk-...", text: $apiKeyDraft)
-                .textFieldStyle(.roundedBorder)
-
-            HStack(spacing: 8) {
-                Button("Save API Key") {
-                    controller.saveAPIKey(apiKeyDraft)
-                    saveMessage = "API key saved on this Mac."
-                }
-
-                if let saveMessage {
-                    Text(saveMessage)
+                    Text("A quick security check window may appear.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
+
+                Text("Step 1b: Enter the code from your email")
+                    .font(.system(size: 12, weight: .medium))
+
+                SecureField("Verification code", text: $otpDraft)
+                    .textFieldStyle(.roundedBorder)
+
+                HStack(spacing: 8) {
+                    Button(isVerifying ? "Signing in..." : "Sign in") {
+                        guard !isVerifying else {
+                            return
+                        }
+
+                        isVerifying = true
+                        Task {
+                            await controller.verifySignInCode(email: emailDraft, otp: otpDraft)
+                            isVerifying = false
+                        }
+                    }
+                    .disabled(isVerifying || otpDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button("Sign out") {
+                        controller.signOutHostedSession()
+                    }
+
+                    Button("Refresh usage") {
+                        Task {
+                            await controller.refreshQuotaStatus()
+                        }
+                    }
+                }
+
+                if let message = controller.authStatusMessage,
+                   !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Personal-key mode is active.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
             }
 
-            Text("Status: \(controller.apiKeyConfigured ? "Configured" : "Not configured")")
+            if let quota = controller.quotaStatus {
+                let used = max(0, quota.deviceCap - quota.remainingToday)
+                Text("Usage today: \(used)/\(quota.deviceCap) requests used")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            DisclosureGroup("Connection details") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Service URL: \(controller.backendURLText)")
+                    Text("Security check: \(controller.turnstileStatusText)")
+                    Text("Account status: \(controller.authSummaryText)")
+                }
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+                .padding(.top, 2)
+            }
+            .font(.system(size: 11))
         }
     }
 
-    private var permissionsSection: some View {
+    private var permissionsStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Permissions")
-                .font(.system(size: 13, weight: .semibold))
-
-            permissionBlock(
+            permissionRow(
                 title: "Microphone",
                 state: controller.permissionSnapshot.microphone,
                 route: "System Settings -> Privacy & Security -> Microphone",
@@ -209,7 +184,7 @@ struct ConfigurationView: View {
                 }
             )
 
-            permissionBlock(
+            permissionRow(
                 title: "Accessibility",
                 state: controller.permissionSnapshot.accessibility,
                 route: "System Settings -> Privacy & Security -> Accessibility",
@@ -219,7 +194,7 @@ struct ConfigurationView: View {
                 }
             )
 
-            permissionBlock(
+            permissionRow(
                 title: "Input Monitoring",
                 state: controller.permissionSnapshot.inputMonitoring,
                 route: "System Settings -> Privacy & Security -> Input Monitoring",
@@ -228,28 +203,242 @@ struct ConfigurationView: View {
                     controller.openSystemSettings(.inputMonitoring)
                 }
             )
+
+            HStack(spacing: 8) {
+                Button("Request permissions") {
+                    controller.testPermissions()
+                }
+
+                Button("Refresh") {
+                    controller.refreshPermissions()
+                }
+            }
+
+            if let monitorError = controller.monitorErrorMessage,
+               !monitorError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(monitorError)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var readyStepContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(readyInstruction)
+                .font(.system(size: 12))
+
+            if controller.readinessStatus == .ready {
+                Text("Try it now: click any text field, hold Fn, speak, and release Fn.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Current app status: \(controller.statusText)")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var advancedSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Advanced")
+                .font(.system(size: 13, weight: .semibold))
+
+            if controller.shouldShowLegacyAPIKeyEntry {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Personal OpenAI API key (legacy mode)")
+                        .font(.system(size: 12, weight: .medium))
+
+                    SecureField("sk-...", text: $apiKeyDraft)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack(spacing: 8) {
+                        Button("Save API key") {
+                            controller.saveAPIKey(apiKeyDraft)
+                            saveMessage = "API key saved on this Mac."
+                        }
+
+                        if let saveMessage {
+                            Text(saveMessage)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Text("Key status: \(controller.apiKeyConfigured ? "Configured" : "Not configured")")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("No advanced settings needed.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.45))
+        )
+    }
+
+    private var accountStepDone: Bool {
+        if controller.hostedModeEnabled {
+            return controller.isSignedIn
+        }
+        return controller.apiKeyConfigured
+    }
+
+    private var permissionsStepDone: Bool {
+        controller.permissionSnapshot.microphone == .granted &&
+            controller.permissionSnapshot.accessibility == .granted &&
+            controller.permissionSnapshot.inputMonitoring == .granted &&
+            controller.monitorErrorMessage == nil
+    }
+
+    private var readyStepDone: Bool {
+        controller.readinessStatus == .ready
+    }
+
+    private var accountStepDetail: String {
+        accountStepDone ? "Signed in" : "Sign in with email to continue"
+    }
+
+    private var permissionsStepDetail: String {
+        permissionsStepDone ? "All required permissions granted" : "Grant all required permissions"
+    }
+
+    private var readyStepDetail: String {
+        readyStepDone ? "Everything is set" : "Complete previous steps"
+    }
+
+    private var readyInstruction: String {
+        switch controller.readinessStatus {
+        case .ready:
+            return "You are ready to dictate."
+        case .signInRequired:
+            return "Finish Step 1 (Sign in) first."
+        case .notEnoughPermissions:
+            return "Finish Step 2 (Permissions) first."
+        case .backendNotConfigured:
+            return "Service setup is missing. Restart the app and try again."
+        case .servicePaused:
+            return "Service is temporarily paused because the daily budget was reached."
+        case .openAIKeyNotConfigured:
+            return "OpenAI key is missing in personal-key mode."
         }
     }
 
     @ViewBuilder
-    private func permissionBlock(
+    private func setupStep<Content: View>(
+        number: Int,
+        title: String,
+        state: SetupStepState,
+        detail: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text("\(number)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(Circle().fill(stepBadgeColor(for: state)))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Text(state.label)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(stepBadgeColor(for: state))
+            }
+
+            content()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 1)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.25))
+                )
+        )
+    }
+
+    @ViewBuilder
+    private func permissionRow(
         title: String,
         state: PermissionState,
         route: String,
         actionTitle: String,
         action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("\(title): \(controller.permissionLabel(for: state))")
-                .font(.system(size: 12, weight: .medium))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(state == .granted ? .green : .orange)
 
-            Text("Navigate: \(route)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                Text("\(title): \(permissionHeadline(for: state))")
+                    .font(.system(size: 12, weight: .medium))
+            }
 
-            Button(actionTitle, action: action)
-                .font(.system(size: 11))
+            if state != .granted {
+                Text("Open: \(route)")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Button(actionTitle, action: action)
+                    .font(.system(size: 11))
+            } else {
+                Text("No action needed")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func permissionHeadline(for state: PermissionState) -> String {
+        switch state {
+        case .granted:
+            return "Granted"
+        case .denied:
+            return "Needs action"
+        case .notDetermined:
+            return "Not set yet"
+        }
+    }
+
+    private func stepBadgeColor(for state: SetupStepState) -> Color {
+        switch state {
+        case .done:
+            return .green
+        case .actionNeeded:
+            return .orange
+        }
+    }
+}
+
+private enum SetupStepState {
+    case done
+    case actionNeeded
+
+    var label: String {
+        switch self {
+        case .done:
+            return "Done"
+        case .actionNeeded:
+            return "Action needed"
+        }
     }
 }
