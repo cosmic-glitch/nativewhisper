@@ -8,6 +8,29 @@ export const config = {
   runtime: "edge",
 };
 
+function extractUpstreamMessage(payload) {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const messageCandidates = [
+    payload.msg,
+    payload.message,
+    payload.error_description,
+    payload.error,
+    payload?.raw,
+  ];
+
+  for (const candidate of messageCandidates) {
+    const value = String(candidate ?? "").trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
 export default async function handler(request) {
   const methodError = requireMethod(request, "POST");
   if (methodError) {
@@ -40,16 +63,6 @@ export default async function handler(request) {
 
   const ip = getClientIP(request);
 
-  const ipLimit = checkRateLimit(`otp:ip:${ip}`, cfg.otpIPLimit, cfg.otpIPWindowSeconds);
-  if (!ipLimit.allowed) {
-    return jsonError(429, "otp_rate_limited_ip", "Too many OTP requests from this IP.");
-  }
-
-  const emailLimit = checkRateLimit(`otp:email:${email}`, cfg.otpEmailLimit, cfg.otpEmailWindowSeconds);
-  if (!emailLimit.allowed) {
-    return jsonError(429, "otp_rate_limited_email", "Too many OTP requests for this email.");
-  }
-
   const turnstile = await verifyTurnstile({
     enforced: cfg.turnstileEnforced,
     secretKey: cfg.turnstileSecret,
@@ -61,13 +74,32 @@ export default async function handler(request) {
     return turnstile.response;
   }
 
+  const ipLimit = checkRateLimit(`otp:ip:${ip}`, cfg.otpIPLimit, cfg.otpIPWindowSeconds);
+  if (!ipLimit.allowed) {
+    return jsonError(429, "otp_rate_limited_ip", "Too many code requests. Please wait a few minutes and try again.");
+  }
+
+  const emailLimit = checkRateLimit(`otp:email:${email}`, cfg.otpEmailLimit, cfg.otpEmailWindowSeconds);
+  if (!emailLimit.allowed) {
+    return jsonError(429, "otp_rate_limited_email", "Too many code requests for this email. Please wait a few minutes and try again.");
+  }
+
   try {
     await startOTP(cfg, email);
     return json({ ok: true });
   } catch (error) {
-    return jsonError(error.status ?? 500, "otp_send_failed", "Failed to send sign-in code.", {
+    const upstreamMessage = extractUpstreamMessage(error.payload);
+    let userMessage = "Failed to send sign-in code.";
+
+    if ((error.status ?? 500) === 429) {
+      userMessage = "Please wait about a minute, then tap Send code again.";
+    } else if (upstreamMessage) {
+      userMessage = upstreamMessage;
+    }
+
+    return jsonError(error.status ?? 500, "otp_send_failed", userMessage, {
       supabase: error.payload ?? null,
-      message: String(error.message ?? error),
+      message: upstreamMessage || String(error.message ?? error),
     });
   }
 }
