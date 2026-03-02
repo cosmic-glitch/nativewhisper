@@ -1,8 +1,8 @@
 import Foundation
 
 protocol BackendAuthenticating: Sendable {
-    func startOTP(email: String, turnstileToken: String, deviceID: String, appVersion: String) async throws
-    func verifyOTP(email: String, otp: String, deviceID: String) async throws -> AuthSession
+    func beginGoogleSignIn(deviceID: String, appVersion: String) async throws -> URL
+    func completeGoogleSignIn(oauthTokens: GoogleOAuthTokens, deviceID: String) async throws -> AuthSession
     func refreshSession(refreshToken: String) async throws -> AuthSession
     func fetchQuota(accessToken: String, deviceID: String) async throws -> QuotaStatus
 }
@@ -13,6 +13,7 @@ enum BackendAuthError: LocalizedError, Equatable {
     case invalidResponse
     case httpError(statusCode: Int, message: String)
     case decodingFailed
+    case invalidAuthorizeURL
     case missingSessionData
 
     var errorDescription: String? {
@@ -27,6 +28,8 @@ enum BackendAuthError: LocalizedError, Equatable {
             return "Backend auth failed (\(statusCode)): \(message)"
         case .decodingFailed:
             return "Failed to decode backend auth response."
+        case .invalidAuthorizeURL:
+            return "Backend returned an invalid Google sign-in URL."
         case .missingSessionData:
             return "Backend auth response is missing session data."
         }
@@ -34,17 +37,47 @@ enum BackendAuthError: LocalizedError, Equatable {
 }
 
 struct BackendAuthClient: BackendAuthenticating {
-    private struct StartRequest: Encodable {
-        let email: String
-        let turnstileToken: String
+    private struct GoogleStartRequest: Encodable {
         let deviceId: String
         let appVersion: String
     }
 
-    private struct VerifyRequest: Encodable {
-        let email: String
-        let otp: String
+    private struct GoogleStartResponse: Decodable {
+        let authorizeURL: String
+
+        private enum CodingKeys: String, CodingKey {
+            case authorizeURL
+            case authorizeUrl
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let value = try container.decodeIfPresent(String.self, forKey: .authorizeURL), !value.isEmpty {
+                authorizeURL = value
+                return
+            }
+            if let value = try container.decodeIfPresent(String.self, forKey: .authorizeUrl), !value.isEmpty {
+                authorizeURL = value
+                return
+            }
+            throw DecodingError.keyNotFound(
+                CodingKeys.authorizeURL,
+                DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "Missing authorize URL")
+            )
+        }
+    }
+
+    private struct GoogleSessionRequest: Encodable {
         let deviceId: String
+    }
+
+    private struct GoogleSessionResponse: Decodable {
+        struct UserPayload: Decodable {
+            let id: String
+            let email: String
+        }
+
+        let user: UserPayload
     }
 
     private struct RefreshRequest: Encodable {
@@ -128,30 +161,51 @@ struct BackendAuthClient: BackendAuthenticating {
         self.session = session
     }
 
-    func startOTP(email: String, turnstileToken: String, deviceID: String, appVersion: String) async throws {
-        let payload = StartRequest(
-            email: email,
-            turnstileToken: turnstileToken,
+    func beginGoogleSignIn(deviceID: String, appVersion: String) async throws -> URL {
+        let payload = GoogleStartRequest(
             deviceId: deviceID,
             appVersion: appVersion
         )
 
-        _ = try await performJSONRequest(path: "/api/auth/start", method: "POST", body: payload)
-    }
+        let data = try await performJSONRequest(path: "/api/auth/google/start", method: "POST", body: payload)
 
-    func verifyOTP(email: String, otp: String, deviceID: String) async throws -> AuthSession {
-        let payload = VerifyRequest(email: email, otp: otp, deviceId: deviceID)
-        let data = try await performJSONRequest(path: "/api/auth/verify", method: "POST", body: payload)
-
-        guard let decoded = try? JSONDecoder().decode(SessionResponse.self, from: data) else {
+        guard let decoded = try? JSONDecoder().decode(GoogleStartResponse.self, from: data) else {
             throw BackendAuthError.decodingFailed
         }
 
-        guard !decoded.accessToken.isEmpty, !decoded.refreshToken.isEmpty else {
+        guard let authorizeURL = URL(string: decoded.authorizeURL) else {
+            throw BackendAuthError.invalidAuthorizeURL
+        }
+
+        return authorizeURL
+    }
+
+    func completeGoogleSignIn(oauthTokens: GoogleOAuthTokens, deviceID: String) async throws -> AuthSession {
+        guard !oauthTokens.accessToken.isEmpty, !oauthTokens.refreshToken.isEmpty else {
             throw BackendAuthError.missingSessionData
         }
 
-        return decoded.authSession
+        let payload = GoogleSessionRequest(deviceId: deviceID)
+        let data = try await performAuthorizedJSONRequest(
+            path: "/api/auth/google/session",
+            method: "POST",
+            body: payload,
+            accessToken: oauthTokens.accessToken
+        )
+
+        guard let decoded = try? JSONDecoder().decode(GoogleSessionResponse.self, from: data) else {
+            throw BackendAuthError.decodingFailed
+        }
+
+        let expiresIn = max(60, oauthTokens.expiresIn ?? 3600)
+
+        return AuthSession(
+            accessToken: oauthTokens.accessToken,
+            refreshToken: oauthTokens.refreshToken,
+            expiresAt: Date().addingTimeInterval(expiresIn),
+            userId: decoded.user.id,
+            email: decoded.user.email
+        )
     }
 
     func refreshSession(refreshToken: String) async throws -> AuthSession {
@@ -191,6 +245,26 @@ struct BackendAuthClient: BackendAuthenticating {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+        return try unwrapHTTPData(data: data, response: response)
+    }
+
+    private func performAuthorizedJSONRequest<T: Encodable>(
+        path: String,
+        method: String,
+        body: T,
+        accessToken: String
+    ) async throws -> Data {
+        guard let url = buildURL(path: path) else {
+            throw BackendAuthError.invalidRequest
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)

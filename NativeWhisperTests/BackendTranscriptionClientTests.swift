@@ -150,9 +150,11 @@ private final class MockBackendAuthClient: BackendAuthenticating, @unchecked Sen
         refreshedSession = nextRefreshedSession
     }
 
-    func startOTP(email: String, turnstileToken: String, deviceID: String, appVersion: String) async throws {}
+    func beginGoogleSignIn(deviceID: String, appVersion: String) async throws -> URL {
+        URL(string: "https://example.com/oauth")!
+    }
 
-    func verifyOTP(email: String, otp: String, deviceID: String) async throws -> AuthSession {
+    func completeGoogleSignIn(oauthTokens: GoogleOAuthTokens, deviceID: String) async throws -> AuthSession {
         refreshedSession
     }
 

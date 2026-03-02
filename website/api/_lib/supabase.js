@@ -67,34 +67,6 @@ function restHeaders(serviceRoleKey, prefer = undefined) {
   return headers;
 }
 
-export async function startOTP(config, email) {
-  const url = makeURL(config.supabaseURL, "/auth/v1/otp");
-
-  return supabaseFetch(url, {
-    method: "POST",
-    headers: authHeaders(config.supabaseAnonKey),
-    body: JSON.stringify({
-      email,
-      create_user: true,
-      should_create_user: true,
-    }),
-  });
-}
-
-export async function verifyOTP(config, email, otp) {
-  const url = makeURL(config.supabaseURL, "/auth/v1/verify");
-
-  return supabaseFetch(url, {
-    method: "POST",
-    headers: authHeaders(config.supabaseAnonKey),
-    body: JSON.stringify({
-      email,
-      token: otp,
-      type: "email",
-    }),
-  });
-}
-
 export async function refreshSession(config, refreshToken) {
   const url = makeURL(config.supabaseURL, "/auth/v1/token", {
     grant_type: "refresh_token",

@@ -50,6 +50,16 @@ cat > "$APP_PATH/Contents/Info.plist" <<'PLIST'
   <key>CFBundleVersion</key><string>4</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>ai.whisperanywhere.auth</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>whisperanywhere</string>
+      </array>
+    </dict>
+  </array>
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Whisper Anywhere needs microphone access for dictation.</string>
 </dict>

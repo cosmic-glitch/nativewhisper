@@ -5,10 +5,7 @@ struct ConfigurationView: View {
 
     @State private var apiKeyDraft: String = ""
     @State private var saveMessage: String?
-    @State private var emailDraft: String = ""
-    @State private var otpDraft: String = ""
-    @State private var isSendingCode = false
-    @State private var isVerifying = false
+    @State private var isSigningInWithGoogle = false
 
     var body: some View {
         ScrollView {
@@ -58,10 +55,6 @@ struct ConfigurationView: View {
             apiKeyDraft = controller.currentAPIKey()
             saveMessage = nil
 
-            if let signedInEmail = controller.signedInEmail {
-                emailDraft = signedInEmail
-            }
-
             Task {
                 await controller.refreshQuotaStatus()
             }
@@ -82,55 +75,35 @@ struct ConfigurationView: View {
     private var accountStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
             if controller.hostedModeEnabled {
-                Text("Step 1a: Enter your email")
+                Text("Step 1: Continue with Google")
                     .font(.system(size: 12, weight: .medium))
 
-                TextField("name@example.com", text: $emailDraft)
-                    .textFieldStyle(.roundedBorder)
-                    .disableAutocorrection(true)
-
                 HStack(spacing: 8) {
-                    Button(isSendingCode ? "Sending..." : "Send code") {
-                        guard !isSendingCode else {
+                    Button(isSigningInWithGoogle ? "Opening..." : "Continue with Google") {
+                        guard !isSigningInWithGoogle else {
                             return
                         }
 
-                        isSendingCode = true
+                        isSigningInWithGoogle = true
                         Task {
-                            await controller.sendSignInCode(email: emailDraft)
-                            isSendingCode = false
+                            await controller.signInWithGoogle()
+                            isSigningInWithGoogle = false
                         }
                     }
-                    .disabled(isSendingCode || emailDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isSigningInWithGoogle)
 
-                    Text("A quick security check window may appear.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    if !controller.isSignedIn {
+                        Text("A Google sign-in window will open.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
-                Text("Step 1b: Enter the code from your email")
-                    .font(.system(size: 12, weight: .medium))
-
-                SecureField("Verification code", text: $otpDraft)
-                    .textFieldStyle(.roundedBorder)
-
                 HStack(spacing: 8) {
-                    Button(isVerifying ? "Signing in..." : "Sign in") {
-                        guard !isVerifying else {
-                            return
-                        }
-
-                        isVerifying = true
-                        Task {
-                            await controller.verifySignInCode(email: emailDraft, otp: otpDraft)
-                            isVerifying = false
-                        }
-                    }
-                    .disabled(isVerifying || otpDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
                     Button("Sign out") {
                         controller.signOutHostedSession()
                     }
+                    .disabled(!controller.isSignedIn)
 
                     Button("Refresh usage") {
                         Task {
@@ -161,7 +134,6 @@ struct ConfigurationView: View {
             DisclosureGroup("Connection details") {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Service URL: \(controller.backendURLText)")
-                    Text("Security check: \(controller.turnstileStatusText)")
                     Text("Account status: \(controller.authSummaryText)")
                 }
                 .font(.system(size: 11))
@@ -302,7 +274,7 @@ struct ConfigurationView: View {
     }
 
     private var accountStepDetail: String {
-        accountStepDone ? "Signed in" : "Sign in with email to continue"
+        accountStepDone ? "Signed in" : "Sign in with Google to continue"
     }
 
     private var permissionsStepDetail: String {

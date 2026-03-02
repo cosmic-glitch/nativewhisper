@@ -69,6 +69,16 @@ cat > "$APP_BUNDLE_PATH/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
   <key>LSMinimumSystemVersion</key><string>${MIN_MACOS_VERSION}</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key><string>ai.whisperanywhere.auth</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>whisperanywhere</string>
+      </array>
+    </dict>
+  </array>
   <key>LSUIElement</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Whisper Anywhere needs microphone access for dictation.</string>
 </dict>

@@ -86,7 +86,7 @@ final class MenuBarController: ObservableObject {
     private let sessionStore: SessionStoring
     private let deviceIdentityStore: DeviceIdentifying
     private let authClient: BackendAuthenticating?
-    private let turnstileTokenProvider: TurnstileTokenProviding?
+    private let googleSignInService: GoogleSignInProviding
     private let stateSink: DictationStateSink
     private let eventSink: DictationEventSink
     private let coordinator: DictationCoordinator
@@ -109,14 +109,6 @@ final class MenuBarController: ObservableObject {
 
     var backendConfigured: Bool {
         config.backendBaseURL != nil
-    }
-
-    var turnstileConfigured: Bool {
-        turnstileTokenProvider?.isConfigured ?? false
-    }
-
-    var turnstileStatusText: String {
-        turnstileConfigured ? "Enabled" : "Not configured"
     }
 
     var signedInEmail: String? {
@@ -163,7 +155,7 @@ final class MenuBarController: ObservableObject {
         sessionStore: SessionStoring = KeychainSessionStore.shared,
         deviceIdentityStore: DeviceIdentifying = DeviceIdentityStore.shared,
         authClient: BackendAuthenticating? = nil,
-        turnstileTokenProvider: TurnstileTokenProviding? = nil,
+        googleSignInService: GoogleSignInProviding? = nil,
         configurationPresenter: ConfigurationPresenting = ConfigurationWindowController(),
         appDefaults: UserDefaults = .standard,
         firstLaunchConfigurationKey: String = "WhisperAnywhere.DidShowConfigurationOnFirstLaunch",
@@ -212,13 +204,10 @@ final class MenuBarController: ObservableObject {
         }
         self.authClient = resolvedAuthClient
 
-        if let turnstileTokenProvider {
-            self.turnstileTokenProvider = turnstileTokenProvider
-        } else if resolvedConfig.hostedModeEnabled,
-                  !resolvedConfig.turnstileSiteKey.isEmpty {
-            self.turnstileTokenProvider = TurnstileTokenService(siteKey: resolvedConfig.turnstileSiteKey)
+        if let googleSignInService {
+            self.googleSignInService = googleSignInService
         } else {
-            self.turnstileTokenProvider = nil
+            self.googleSignInService = GoogleSignInService(callbackURL: resolvedConfig.googleAuthCallbackURL)
         }
 
         let initialSession = resolvedConfig.hostedModeEnabled ? sessionStore.loadSession() : nil
@@ -388,7 +377,7 @@ final class MenuBarController: ObservableObject {
         syncAPIKeyStatus()
     }
 
-    func sendSignInCode(email: String) async {
+    func signInWithGoogle() async {
         guard hostedModeEnabled else {
             return
         }
@@ -398,64 +387,28 @@ final class MenuBarController: ObservableObject {
             return
         }
 
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalizedEmail.isEmpty else {
-            authStatusMessage = "Enter a valid email address."
-            return
-        }
-
         do {
-            let token: String
-            if let turnstileTokenProvider, turnstileTokenProvider.isConfigured {
-                authStatusMessage = "Running security check..."
-                token = try await turnstileTokenProvider.fetchToken()
-            } else {
-                token = ""
-            }
-
-            try await authClient.startOTP(
-                email: normalizedEmail,
-                turnstileToken: token,
-                deviceID: deviceIdentityStore.deviceID(),
+            authStatusMessage = "Opening Google sign-in..."
+            let deviceID = deviceIdentityStore.deviceID()
+            let startURL = try await authClient.beginGoogleSignIn(
+                deviceID: deviceID,
                 appVersion: appVersionString()
             )
-            authStatusMessage = "Verification code sent."
-        } catch {
-            let message = error.localizedDescription
-            authStatusMessage = message
-            notifier.notify(title: "Whisper Anywhere", body: message)
-        }
-    }
-
-    func verifySignInCode(email: String, otp: String) async {
-        guard hostedModeEnabled else {
-            return
-        }
-
-        guard let authClient else {
-            authStatusMessage = "Backend auth is not configured."
-            return
-        }
-
-        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let normalizedOTP = otp.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !normalizedEmail.isEmpty, !normalizedOTP.isEmpty else {
-            authStatusMessage = "Email and verification code are required."
-            return
-        }
-
-        do {
-            let session = try await authClient.verifyOTP(
-                email: normalizedEmail,
-                otp: normalizedOTP,
-                deviceID: deviceIdentityStore.deviceID()
+            let oauthTokens = try await googleSignInService.authenticate(startURL: startURL)
+            let session = try await authClient.completeGoogleSignIn(
+                oauthTokens: oauthTokens,
+                deviceID: deviceID
             )
             try sessionStore.saveSession(session)
             authSession = session
             syncAPIKeyStatus()
             authStatusMessage = "Signed in as \(session.email)."
             await refreshQuotaStatus()
+        } catch let error as GoogleSignInError {
+            authStatusMessage = error.localizedDescription
+            if error != .cancelled {
+                notifier.notify(title: "Whisper Anywhere", body: error.localizedDescription)
+            }
         } catch {
             let message = error.localizedDescription
             authStatusMessage = message

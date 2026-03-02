@@ -39,8 +39,9 @@ function envNumber(name, fallback) {
 }
 
 export function loadConfig() {
-  const turnstileSecret = env("TURNSTILE_SECRET_KEY");
-  const turnstileEnforced = envBool("TURNSTILE_ENFORCE", true) && turnstileSecret.length > 0;
+  const googleAuthRedirectURI = env("GOOGLE_AUTH_REDIRECT_URI", "whisperanywhere://auth/callback");
+  const authStartIPWindowDefault = Math.max(30, Math.floor(envNumber("OTP_IP_WINDOW_SECONDS", 600)));
+  const authStartIPLimitDefault = Math.max(1, Math.floor(envNumber("OTP_IP_LIMIT", 10)));
 
   return {
     appTranscriptionEnabled: envBool("APP_TRANSCRIPTION_ENABLED", true),
@@ -49,16 +50,13 @@ export function loadConfig() {
     supabaseURL: requiredEnv("SUPABASE_URL"),
     supabaseAnonKey: requiredEnv("SUPABASE_ANON_KEY"),
     supabaseServiceRoleKey: requiredEnv("SUPABASE_SERVICE_ROLE_KEY"),
-    turnstileSecret,
-    turnstileEnforced,
+    googleAuthRedirectURI,
     deviceDailyTranscriptionCap: Math.max(1, Math.floor(envNumber("DEVICE_DAILY_TRANSCRIPTION_CAP", 100))),
     maxUploadBytes: Math.max(256_000, Math.floor(envNumber("MAX_UPLOAD_BYTES", 15 * 1024 * 1024))),
     globalDailyEstimatedUSDCap: Math.max(0.01, envNumber("GLOBAL_DAILY_ESTIMATED_USD_CAP", 10)),
     estimatedUSDPerAudioMinute: Math.max(0.0001, envNumber("ESTIMATED_USD_PER_AUDIO_MINUTE", 0.006)),
-    otpIPWindowSeconds: Math.max(30, Math.floor(envNumber("OTP_IP_WINDOW_SECONDS", 600))),
-    otpIPLimit: Math.max(1, Math.floor(envNumber("OTP_IP_LIMIT", 10))),
-    otpEmailWindowSeconds: Math.max(30, Math.floor(envNumber("OTP_EMAIL_WINDOW_SECONDS", 600))),
-    otpEmailLimit: Math.max(1, Math.floor(envNumber("OTP_EMAIL_LIMIT", 5))),
+    authStartIPWindowSeconds: Math.max(30, Math.floor(envNumber("AUTH_START_IP_WINDOW_SECONDS", authStartIPWindowDefault))),
+    authStartIPLimit: Math.max(1, Math.floor(envNumber("AUTH_START_IP_LIMIT", authStartIPLimitDefault))),
     txIPWindowSeconds: Math.max(5, Math.floor(envNumber("TX_IP_WINDOW_SECONDS", 60))),
     txIPLimit: Math.max(1, Math.floor(envNumber("TX_IP_LIMIT", 40))),
     txUserWindowSeconds: Math.max(5, Math.floor(envNumber("TX_USER_WINDOW_SECONDS", 60))),

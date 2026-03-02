@@ -2,7 +2,7 @@ import Foundation
 
 struct AppConfig {
     static let defaultHostedBackendBaseURL = "https://whisperanywhere.app"
-    static let defaultTurnstileSiteKey = "0x4AAAAAAClFSEYtZFmDim3R"
+    static let defaultGoogleAuthCallbackURL = "whisperanywhere://auth/callback"
 
     enum TranscriptionMode: Equatable {
         case hosted
@@ -12,7 +12,7 @@ struct AppConfig {
     private let keyProvider: @Sendable () -> String
     let transcriptionMode: TranscriptionMode
     let backendBaseURL: URL?
-    let turnstileSiteKey: String
+    let googleAuthCallbackURL: URL
     let allowLegacyPersonalKeyEntry: Bool
     let model: String
     let language: String
@@ -23,13 +23,13 @@ struct AppConfig {
         language: String,
         transcriptionMode: TranscriptionMode = .personalKey,
         backendBaseURL: URL? = nil,
-        turnstileSiteKey: String = "",
+        googleAuthCallbackURL: URL = URL(string: AppConfig.defaultGoogleAuthCallbackURL)!,
         allowLegacyPersonalKeyEntry: Bool = true
     ) {
         self.keyProvider = { openAIKey }
         self.transcriptionMode = transcriptionMode
         self.backendBaseURL = backendBaseURL
-        self.turnstileSiteKey = turnstileSiteKey
+        self.googleAuthCallbackURL = googleAuthCallbackURL
         self.allowLegacyPersonalKeyEntry = allowLegacyPersonalKeyEntry
         self.model = model
         self.language = language
@@ -41,13 +41,13 @@ struct AppConfig {
         language: String,
         transcriptionMode: TranscriptionMode,
         backendBaseURL: URL?,
-        turnstileSiteKey: String,
+        googleAuthCallbackURL: URL,
         allowLegacyPersonalKeyEntry: Bool
     ) {
         self.keyProvider = keyProvider
         self.transcriptionMode = transcriptionMode
         self.backendBaseURL = backendBaseURL
-        self.turnstileSiteKey = turnstileSiteKey
+        self.googleAuthCallbackURL = googleAuthCallbackURL
         self.allowLegacyPersonalKeyEntry = allowLegacyPersonalKeyEntry
         self.model = model
         self.language = language
@@ -79,8 +79,10 @@ struct AppConfig {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let backendBaseURL = URL(string: backendBaseURLString)
 
-        let turnstileSiteKey = (environment["TURNSTILE_SITE_KEY"] ?? Self.defaultTurnstileSiteKey)
+        let callbackURLString = (environment["GOOGLE_AUTH_CALLBACK_URL"] ?? Self.defaultGoogleAuthCallbackURL)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let googleAuthCallbackURL = URL(string: callbackURLString)
+            ?? URL(string: Self.defaultGoogleAuthCallbackURL)!
 
         let allowLegacyKeyValue = (environment["ALLOW_LEGACY_PERSONAL_KEY_ENTRY"] ?? "false")
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,7 +97,7 @@ struct AppConfig {
             language: "en",
             transcriptionMode: hostedModeEnabled ? .hosted : .personalKey,
             backendBaseURL: backendBaseURL,
-            turnstileSiteKey: turnstileSiteKey,
+            googleAuthCallbackURL: googleAuthCallbackURL,
             allowLegacyPersonalKeyEntry: allowLegacyPersonalKeyEntry
         )
     }

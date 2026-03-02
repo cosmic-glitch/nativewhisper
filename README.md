@@ -14,7 +14,7 @@ Hold `Fn` to record, release `Fn` to transcribe, and text is inserted at the act
 ## Hosted-key mode (current default)
 
 The app now uses backend-hosted OpenAI credentials by default.
-Users sign in with email OTP and do not enter their own OpenAI key.
+Users sign in with Google and do not enter their own OpenAI key.
 
 Data behavior in hosted mode:
 
@@ -37,7 +37,7 @@ Create `.env` in repo root (or export these variables before launch):
 ```bash
 WHISPER_ANYWHERE_HOSTED_MODE=true
 BACKEND_BASE_URL=https://whisperanywhere.app
-TURNSTILE_SITE_KEY=0x4AAAAAAClFSEYtZFmDim3R
+GOOGLE_AUTH_CALLBACK_URL=whisperanywhere://auth/callback
 ALLOW_LEGACY_PERSONAL_KEY_ENTRY=false
 ```
 
@@ -58,15 +58,15 @@ This builds and installs `/Applications/Whisper Anywhere.app`, terminates any ru
 
 Hosted mode sign-in note:
 
-- `Send Code` runs an automatic Cloudflare Turnstile check in a small web view window.
-- Users no longer need to paste a manual Turnstile token.
+- The app opens a secure Google sign-in window.
+- Supabase Google Auth must allow callback URL: `whisperanywhere://auth/callback`.
 
 ## Backend (Vercel + Supabase)
 
 API routes are implemented under `website/api`:
 
-- `POST /api/auth/start`
-- `POST /api/auth/verify`
+- `POST /api/auth/google/start`
+- `POST /api/auth/google/session`
 - `POST /api/auth/refresh`
 - `POST /api/transcribe`
 - `GET /api/quota`
@@ -77,17 +77,16 @@ Configure these Vercel environment variables:
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `TURNSTILE_SECRET_KEY`
-- `TURNSTILE_ENFORCE`
+- `GOOGLE_AUTH_REDIRECT_URI`
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID` (for `supabase config push`)
+- `SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET` (for `supabase config push`)
 - `APP_TRANSCRIPTION_ENABLED`
 - `DEVICE_DAILY_TRANSCRIPTION_CAP`
 - `MAX_UPLOAD_BYTES`
 - `GLOBAL_DAILY_ESTIMATED_USD_CAP`
 - `ESTIMATED_USD_PER_AUDIO_MINUTE`
-- `OTP_IP_WINDOW_SECONDS`
-- `OTP_IP_LIMIT`
-- `OTP_EMAIL_WINDOW_SECONDS`
-- `OTP_EMAIL_LIMIT`
+- `AUTH_START_IP_WINDOW_SECONDS`
+- `AUTH_START_IP_LIMIT`
 - `TX_IP_WINDOW_SECONDS`
 - `TX_IP_LIMIT`
 - `TX_USER_WINDOW_SECONDS`
