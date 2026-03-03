@@ -11,10 +11,14 @@ Hold `Fn` to record, release `Fn` to transcribe, and text is inserted at the act
 - Direct text insertion with clipboard fallback when no cursor is focused
 - Menu bar UX with recording/transcribing HUD and permission guidance
 
-## Hosted-key mode (current default)
+## Hybrid transcription modes (current)
 
-The app now uses backend-hosted OpenAI credentials by default.
-Users sign in with Google and do not enter their own OpenAI key.
+Whisper Anywhere now supports two runtime-selectable modes in Configure:
+
+- `Hosted`: sign in with Google and use the Whisper Anywhere backend proxy.
+- `Direct OpenAI`: use your own OpenAI key and call OpenAI directly from the app.
+
+Default route for new installs is `Hosted`.
 
 Data behavior in hosted mode:
 
@@ -93,6 +97,8 @@ Configure these Vercel environment variables:
 - `TX_USER_LIMIT`
 - `TX_DEVICE_WINDOW_SECONDS`
 - `TX_DEVICE_LIMIT`
+
+Direct mode does not require backend sign-in.
 
 Supabase tables expected by backend:
 

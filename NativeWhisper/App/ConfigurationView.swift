@@ -14,7 +14,7 @@ struct ConfigurationView: View {
 
                 setupStep(
                     number: 1,
-                    title: "Sign in",
+                    title: accountStepTitle,
                     state: accountStepDone ? .done : .actionNeeded,
                     detail: accountStepDetail,
                     content: {
@@ -42,7 +42,7 @@ struct ConfigurationView: View {
                     }
                 )
 
-                if !controller.hostedModeEnabled || controller.shouldShowLegacyAPIKeyEntry {
+                if controller.shouldShowLegacyAPIKeyEntry && controller.selectedTranscriptionRoute != .direct {
                     advancedSection
                 }
             }
@@ -74,6 +74,8 @@ struct ConfigurationView: View {
 
     private var accountStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
+            routeSelector
+
             if controller.hostedModeEnabled {
                 Text("Step 1: Continue with Google")
                     .font(.system(size: 12, weight: .medium))
@@ -119,9 +121,7 @@ struct ConfigurationView: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Text("Personal-key mode is active.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                directModeContent
             }
 
             if let quota = controller.quotaStatus {
@@ -133,6 +133,7 @@ struct ConfigurationView: View {
 
             DisclosureGroup("Connection details") {
                 VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcription route: \(controller.transcriptionRouteStatusText)")
                     Text("Service URL: \(controller.backendURLText)")
                     Text("Account status: \(controller.authSummaryText)")
                 }
@@ -142,6 +143,70 @@ struct ConfigurationView: View {
             }
             .font(.system(size: 11))
         }
+    }
+
+    private var routeSelector: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Step 0: Choose transcription mode")
+                .font(.system(size: 12, weight: .medium))
+
+            Picker("Transcription mode", selection: transcriptionRouteBinding) {
+                ForEach(controller.availableTranscriptionRoutes, id: \.rawValue) { route in
+                    Text(route.label).tag(route)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Text(controller.hostedModeEnabled
+                 ? "Hosted mode uses Whisper Anywhere sign-in and backend limits."
+                 : "Direct mode sends audio straight to OpenAI using your personal key.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var directModeContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Step 1: Enter your OpenAI API key")
+                .font(.system(size: 12, weight: .medium))
+
+            SecureField("sk-...", text: $apiKeyDraft)
+                .textFieldStyle(.roundedBorder)
+
+            HStack(spacing: 8) {
+                Button("Save API key") {
+                    controller.saveAPIKey(apiKeyDraft)
+                    saveMessage = "API key saved on this Mac."
+                }
+
+                if let saveMessage {
+                    Text(saveMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("Key status: \(controller.apiKeyConfigured ? "Configured" : "Not configured")")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            if let message = controller.authStatusMessage,
+               !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var transcriptionRouteBinding: Binding<TranscriptionRoute> {
+        Binding(
+            get: { controller.selectedTranscriptionRoute },
+            set: { route in
+                controller.setTranscriptionRoute(route)
+                apiKeyDraft = controller.currentAPIKey()
+            }
+        )
     }
 
     private var permissionsStepContent: some View {
@@ -262,6 +327,10 @@ struct ConfigurationView: View {
         return controller.apiKeyConfigured
     }
 
+    private var accountStepTitle: String {
+        controller.hostedModeEnabled ? "Sign in" : "Set API key"
+    }
+
     private var permissionsStepDone: Bool {
         controller.permissionSnapshot.microphone == .granted &&
             controller.permissionSnapshot.accessibility == .granted &&
@@ -274,7 +343,11 @@ struct ConfigurationView: View {
     }
 
     private var accountStepDetail: String {
-        accountStepDone ? "Signed in" : "Sign in with Google to continue"
+        if controller.hostedModeEnabled {
+            return accountStepDone ? "Signed in" : "Sign in with Google to continue"
+        }
+
+        return accountStepDone ? "API key saved" : "Enter your OpenAI key to continue"
     }
 
     private var permissionsStepDetail: String {

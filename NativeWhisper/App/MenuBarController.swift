@@ -70,6 +70,7 @@ final class MenuBarController: ObservableObject {
     @Published private(set) var authSession: AuthSession?
     @Published private(set) var quotaStatus: QuotaStatus?
     @Published private(set) var authStatusMessage: String?
+    @Published private(set) var selectedTranscriptionRoute: TranscriptionRoute
 
     private let permissionService: PermissionProviding
     private let notifier: Notifying
@@ -83,6 +84,7 @@ final class MenuBarController: ObservableObject {
     private let firstLaunchConfigurationKey: String
     private let legacyFirstLaunchConfigurationKey: String
     private let legacyBundleIdentifier: String
+    private let transcriptionRouteStore: TranscriptionRouteStoring
     private let sessionStore: SessionStoring
     private let deviceIdentityStore: DeviceIdentifying
     private let authClient: BackendAuthenticating?
@@ -100,6 +102,17 @@ final class MenuBarController: ObservableObject {
     let config: AppConfig
 
     var hostedModeEnabled: Bool {
+        selectedTranscriptionRoute == .hosted
+    }
+
+    var availableTranscriptionRoutes: [TranscriptionRoute] {
+        if config.hostedModeEnabled {
+            return [.hosted, .direct]
+        }
+        return [.direct]
+    }
+
+    var canUseHostedRoute: Bool {
         config.hostedModeEnabled
     }
 
@@ -109,6 +122,15 @@ final class MenuBarController: ObservableObject {
 
     var backendConfigured: Bool {
         config.backendBaseURL != nil
+    }
+
+    var transcriptionRouteStatusText: String {
+        switch selectedTranscriptionRoute {
+        case .hosted:
+            return "Hosted mode"
+        case .direct:
+            return "Direct OpenAI mode"
+        }
     }
 
     var signedInEmail: String? {
@@ -146,12 +168,13 @@ final class MenuBarController: ObservableObject {
             return "Not signed in"
         }
 
-        return apiKeyConfigured ? "Configured" : "Not configured"
+        return apiKeyConfigured ? "API key configured" : "API key not configured"
     }
 
     init(
         config: AppConfig? = nil,
         apiKeyStore: APIKeyStoring = APIKeyStore.shared,
+        transcriptionRouteStore: TranscriptionRouteStoring = TranscriptionRouteStore.shared,
         sessionStore: SessionStoring = KeychainSessionStore.shared,
         deviceIdentityStore: DeviceIdentifying = DeviceIdentityStore.shared,
         authClient: BackendAuthenticating? = nil,
@@ -183,6 +206,7 @@ final class MenuBarController: ObservableObject {
         self.firstLaunchConfigurationKey = firstLaunchConfigurationKey
         self.legacyFirstLaunchConfigurationKey = legacyFirstLaunchConfigurationKey
         self.legacyBundleIdentifier = legacyBundleIdentifier
+        self.transcriptionRouteStore = transcriptionRouteStore
         self.permissionService = permissionService
         self.notifier = notifier
         self.fnMonitor = fnMonitor
@@ -192,6 +216,16 @@ final class MenuBarController: ObservableObject {
         self.stateSink = DictationStateSink()
         self.eventSink = DictationEventSink()
         self.permissionSnapshot = permissionService.snapshot()
+
+        let persistedRoute = transcriptionRouteStore.currentRoute()
+        let initialRoute: TranscriptionRoute
+        if resolvedConfig.hostedModeEnabled {
+            initialRoute = persistedRoute
+        } else {
+            initialRoute = .direct
+            transcriptionRouteStore.saveRoute(.direct)
+        }
+        self.selectedTranscriptionRoute = initialRoute
 
         let resolvedAuthClient: BackendAuthenticating?
         if let authClient {
@@ -210,26 +244,30 @@ final class MenuBarController: ObservableObject {
             self.googleSignInService = GoogleSignInService(callbackURL: resolvedConfig.googleAuthCallbackURL)
         }
 
-        let initialSession = resolvedConfig.hostedModeEnabled ? sessionStore.loadSession() : nil
+        let initialSession = initialRoute == .hosted ? sessionStore.loadSession() : nil
         self.authSession = initialSession
-        self.apiKeyConfigured = resolvedConfig.hostedModeEnabled ? (initialSession != nil) : resolvedConfig.hasAPIKey
+        self.apiKeyConfigured = initialRoute == .hosted ? (initialSession != nil) : !resolvedConfig.openAIKey.isEmpty
 
-        let transcriptionClient: Transcribing
-        if resolvedConfig.hostedModeEnabled,
-           let resolvedAuthClient,
+        let hostedTranscriptionClient: Transcribing
+        if let resolvedAuthClient,
            let backendBaseURL = resolvedConfig.backendBaseURL {
-            transcriptionClient = BackendTranscriptionClient(
+            hostedTranscriptionClient = BackendTranscriptionClient(
                 baseURL: backendBaseURL,
                 sessionStore: sessionStore,
                 authClient: resolvedAuthClient,
                 deviceIDProvider: deviceIdentityStore,
                 language: resolvedConfig.language
             )
-        } else if resolvedConfig.hostedModeEnabled {
-            transcriptionClient = UnavailableTranscriptionClient()
         } else {
-            transcriptionClient = OpenAITranscriptionClient(config: resolvedConfig)
+            hostedTranscriptionClient = UnavailableTranscriptionClient()
         }
+
+        let directTranscriptionClient = OpenAITranscriptionClient(config: resolvedConfig)
+        let transcriptionClient = HybridTranscriptionClient(
+            routeProvider: { transcriptionRouteStore.currentRoute() },
+            hostedClient: hostedTranscriptionClient,
+            directClient: directTranscriptionClient
+        )
 
         self.coordinator = DictationCoordinator(
             audioCapture: audioCapture,
@@ -269,6 +307,10 @@ final class MenuBarController: ObservableObject {
 
     var readinessStatus: AppReadinessStatus {
         if hostedModeEnabled {
+            guard canUseHostedRoute else {
+                return .backendNotConfigured
+            }
+
             guard backendConfigured else {
                 return .backendNotConfigured
             }
@@ -300,7 +342,7 @@ final class MenuBarController: ObservableObject {
     }
 
     var statusText: String {
-        readinessStatus.label
+        "\(transcriptionRouteStatusText) • \(readinessStatus.label)"
     }
 
     var menuIconName: String {
@@ -362,14 +404,14 @@ final class MenuBarController: ObservableObject {
     }
 
     func currentAPIKey() -> String {
-        guard !hostedModeEnabled || shouldShowLegacyAPIKeyEntry else {
+        guard selectedTranscriptionRoute == .direct || shouldShowLegacyAPIKeyEntry else {
             return ""
         }
         return config.openAIKey
     }
 
     func saveAPIKey(_ value: String) {
-        guard !hostedModeEnabled || shouldShowLegacyAPIKeyEntry else {
+        guard selectedTranscriptionRoute == .direct || shouldShowLegacyAPIKeyEntry else {
             return
         }
 
@@ -377,8 +419,47 @@ final class MenuBarController: ObservableObject {
         syncAPIKeyStatus()
     }
 
+    func setTranscriptionRoute(_ route: TranscriptionRoute) {
+        guard route != selectedTranscriptionRoute else {
+            return
+        }
+
+        guard case .idle = dictationState else {
+            let message = "Finish current dictation before switching modes."
+            authStatusMessage = message
+            showTransientHUDMessage(message)
+            return
+        }
+
+        guard availableTranscriptionRoutes.contains(route) else {
+            authStatusMessage = "Hosted mode is disabled by configuration."
+            return
+        }
+
+        selectedTranscriptionRoute = route
+        transcriptionRouteStore.saveRoute(route)
+
+        if route == .hosted {
+            restoreHostedSessionIfNeeded()
+            Task {
+                await refreshQuotaStatus()
+            }
+        } else {
+            quotaStatus = nil
+            authStatusMessage = nil
+        }
+
+        syncAPIKeyStatus()
+    }
+
     func signInWithGoogle() async {
         guard hostedModeEnabled else {
+            authStatusMessage = "Switch to Hosted mode to sign in."
+            return
+        }
+
+        guard canUseHostedRoute else {
+            authStatusMessage = "Hosted mode is disabled by configuration."
             return
         }
 
@@ -430,7 +511,7 @@ final class MenuBarController: ObservableObject {
     }
 
     func refreshQuotaStatus() async {
-        guard hostedModeEnabled else {
+        guard hostedModeEnabled, canUseHostedRoute else {
             quotaStatus = nil
             return
         }
@@ -559,7 +640,7 @@ final class MenuBarController: ObservableObject {
     }
 
     private func restoreHostedSessionIfNeeded() {
-        guard hostedModeEnabled else {
+        guard hostedModeEnabled, canUseHostedRoute else {
             return
         }
 
@@ -582,6 +663,7 @@ final class MenuBarController: ObservableObject {
 
     private func refreshHostedSessionIfNeeded(force: Bool) async {
         guard hostedModeEnabled,
+              canUseHostedRoute,
               let authClient,
               let currentSession = authSession else {
             return
@@ -609,7 +691,7 @@ final class MenuBarController: ObservableObject {
         if hostedModeEnabled {
             apiKeyConfigured = authSession != nil
         } else {
-            apiKeyConfigured = config.hasAPIKey
+            apiKeyConfigured = !config.openAIKey.isEmpty
         }
     }
 
@@ -645,26 +727,37 @@ final class MenuBarController: ObservableObject {
     }
 
     private func canStartDictationFromCurrentState() -> Bool {
-        if !hostedModeEnabled {
+        switch selectedTranscriptionRoute {
+        case .hosted:
+            guard canUseHostedRoute else {
+                notifier.notify(title: "Whisper Anywhere", body: "Hosted mode is disabled by configuration.")
+                return false
+            }
+
+            guard backendConfigured else {
+                notifier.notify(title: "Whisper Anywhere", body: "Backend base URL is not configured.")
+                return false
+            }
+
+            guard authSession != nil else {
+                notifier.notify(title: "Whisper Anywhere", body: "Sign in required. Open Configure.")
+                return false
+            }
+
+            if quotaStatus?.isServicePaused == true {
+                notifier.notify(title: "Whisper Anywhere", body: "Service paused (daily budget reached).")
+                return false
+            }
+
+            return true
+
+        case .direct:
+            if config.openAIKey.isEmpty {
+                notifier.notify(title: "Whisper Anywhere", body: "OpenAI key not configured for Direct mode.")
+                return false
+            }
             return true
         }
-
-        guard backendConfigured else {
-            notifier.notify(title: "Whisper Anywhere", body: "Backend base URL is not configured.")
-            return false
-        }
-
-        guard authSession != nil else {
-            notifier.notify(title: "Whisper Anywhere", body: "Sign in required. Open Configure.")
-            return false
-        }
-
-        if quotaStatus?.isServicePaused == true {
-            notifier.notify(title: "Whisper Anywhere", body: "Service paused (daily budget reached).")
-            return false
-        }
-
-        return true
     }
 
     private func handleStateTransition(from oldState: DictationState, to newState: DictationState) {

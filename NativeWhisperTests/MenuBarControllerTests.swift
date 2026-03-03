@@ -48,9 +48,97 @@ final class MenuBarControllerTests: XCTestCase {
         XCTAssertEqual(mocks.hud.hideCount, 1)
     }
 
-    private func makeController(mocks: ControllerMocks) -> MenuBarController {
+    func testDirectRouteReadyWithoutSignInWhenAPIKeyConfigured() {
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil)
+        let routeStore = MenuMockRouteStore(initialRoute: .direct)
+        let controller = makeController(
+            mocks: mocks,
+            config: AppConfig(
+                openAIKey: "sk-test",
+                model: "whisper-1",
+                language: "en",
+                transcriptionMode: .hosted,
+                backendBaseURL: URL(string: "https://whisperanywhere.app"),
+                allowLegacyPersonalKeyEntry: true
+            ),
+            routeStore: routeStore
+        )
+
+        XCTAssertEqual(controller.selectedTranscriptionRoute, .direct)
+        XCTAssertEqual(controller.readinessStatus, .ready)
+    }
+
+    func testHostedRouteRequiresSignInWhenSessionMissing() {
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil)
+        let routeStore = MenuMockRouteStore(initialRoute: .hosted)
+        let controller = makeController(
+            mocks: mocks,
+            config: AppConfig(
+                openAIKey: "",
+                model: "whisper-1",
+                language: "en",
+                transcriptionMode: .hosted,
+                backendBaseURL: URL(string: "https://whisperanywhere.app"),
+                allowLegacyPersonalKeyEntry: true
+            ),
+            routeStore: routeStore
+        )
+
+        XCTAssertEqual(controller.selectedTranscriptionRoute, .hosted)
+        XCTAssertEqual(controller.readinessStatus, .signInRequired)
+    }
+
+    func testRouteSwitchBlockedWhileNotIdle() {
+        let mocks = makeMocks(audioLevel: 0.4, bands: nil)
+        let routeStore = MenuMockRouteStore(initialRoute: .direct)
+        let controller = makeController(
+            mocks: mocks,
+            config: AppConfig(openAIKey: "sk-test", model: "whisper-1", language: "en"),
+            routeStore: routeStore
+        )
+
+        controller.applyStateUpdate(.recording(Date()))
+        controller.setTranscriptionRoute(.hosted)
+
+        XCTAssertEqual(controller.selectedTranscriptionRoute, .direct)
+        XCTAssertEqual(routeStore.currentRoute(), .direct)
+        XCTAssertEqual(controller.authStatusMessage, "Finish current dictation before switching modes.")
+    }
+
+    func testDirectRouteSkipsHostedQuotaRefreshCalls() async {
+        let mocks = makeMocks(audioLevel: 0.4, bands: nil)
+        let routeStore = MenuMockRouteStore(initialRoute: .direct)
+        let authClient = MenuMockAuthClient()
+        let controller = makeController(
+            mocks: mocks,
+            config: AppConfig(
+                openAIKey: "sk-test",
+                model: "whisper-1",
+                language: "en",
+                transcriptionMode: .hosted,
+                backendBaseURL: URL(string: "https://whisperanywhere.app"),
+                allowLegacyPersonalKeyEntry: true
+            ),
+            routeStore: routeStore,
+            authClient: authClient
+        )
+
+        await controller.refreshQuotaStatus()
+        XCTAssertEqual(authClient.fetchQuotaCalls, 0)
+    }
+
+    private func makeController(
+        mocks: ControllerMocks,
+        config: AppConfig = AppConfig(openAIKey: "test", model: "whisper-1", language: "en"),
+        routeStore: TranscriptionRouteStoring = MenuMockRouteStore(initialRoute: .direct),
+        authClient: BackendAuthenticating? = nil,
+        sessionStore: SessionStoring = MenuMockSessionStore()
+    ) -> MenuBarController {
         MenuBarController(
-            config: AppConfig(openAIKey: "test", model: "whisper-1", language: "en"),
+            config: config,
+            transcriptionRouteStore: routeStore,
+            sessionStore: sessionStore,
+            authClient: authClient,
             permissionService: mocks.permissionService,
             notifier: mocks.notifier,
             fnMonitor: mocks.fnMonitor,
@@ -182,5 +270,84 @@ private final class MenuMockHUDController: RecordingHUDControlling {
     func update(bands: [Float]) {
         updateCount += 1
         didReceiveBandUpdate = true
+    }
+}
+
+private final class MenuMockRouteStore: TranscriptionRouteStoring, @unchecked Sendable {
+    private var route: TranscriptionRoute
+    private let lock = NSLock()
+
+    init(initialRoute: TranscriptionRoute) {
+        self.route = initialRoute
+    }
+
+    func currentRoute() -> TranscriptionRoute {
+        lock.lock()
+        defer { lock.unlock() }
+        return route
+    }
+
+    func saveRoute(_ route: TranscriptionRoute) {
+        lock.lock()
+        self.route = route
+        lock.unlock()
+    }
+}
+
+private final class MenuMockAuthClient: BackendAuthenticating, @unchecked Sendable {
+    private(set) var fetchQuotaCalls = 0
+
+    func beginGoogleSignIn(deviceID: String, appVersion: String) async throws -> URL {
+        URL(string: "https://example.com")!
+    }
+
+    func completeGoogleSignIn(oauthTokens: GoogleOAuthTokens, deviceID: String) async throws -> AuthSession {
+        AuthSession(
+            accessToken: "token",
+            refreshToken: "refresh",
+            expiresAt: Date().addingTimeInterval(3600),
+            userId: "user",
+            email: "user@example.com"
+        )
+    }
+
+    func refreshSession(refreshToken: String) async throws -> AuthSession {
+        AuthSession(
+            accessToken: "token",
+            refreshToken: "refresh",
+            expiresAt: Date().addingTimeInterval(3600),
+            userId: "user",
+            email: "user@example.com"
+        )
+    }
+
+    func fetchQuota(accessToken: String, deviceID: String) async throws -> QuotaStatus {
+        fetchQuotaCalls += 1
+        return QuotaStatus(
+            remainingToday: 100,
+            deviceCap: 100,
+            globalBudgetState: "ok",
+            resetAt: nil
+        )
+    }
+}
+
+private final class MenuMockSessionStore: SessionStoring, @unchecked Sendable {
+    private var session: AuthSession?
+
+    init(initialSession: AuthSession? = nil) {
+        self.session = initialSession
+    }
+
+    func loadSession() -> AuthSession? {
+        session
+    }
+
+    func saveSession(_ session: AuthSession) throws {
+        self.session = session
+    }
+
+    func clearSession() throws {
+        session = nil
     }
 }

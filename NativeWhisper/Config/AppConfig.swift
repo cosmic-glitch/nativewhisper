@@ -59,7 +59,7 @@ struct AppConfig {
 
     var hasAPIKey: Bool {
         if hostedModeEnabled {
-            return backendBaseURL != nil
+            return backendBaseURL != nil || !openAIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
         return !openAIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
