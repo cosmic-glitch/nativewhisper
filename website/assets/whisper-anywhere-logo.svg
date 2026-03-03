@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Draft 04 V4A: Green Whisper Anywhere Pipeline</title>
+  <desc id="desc">Three-stage dictation pipeline in the production green theme with Whisper Anywhere wordmark.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#060c19"/>
+      <stop offset="100%" stop-color="#0f2e2a"/>
+    </linearGradient>
+    <linearGradient id="stage" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1a4f48"/>
+      <stop offset="100%" stop-color="#123d36"/>
+    </linearGradient>
+    <linearGradient id="mic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9effeb"/>
+      <stop offset="100%" stop-color="#64f1d7"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="48" y="48" width="928" height="928" rx="188" fill="url(#bg)"/>
+
+  <g transform="translate(116 304)">
+    <rect x="0" y="0" width="240" height="416" rx="50" fill="url(#stage)" stroke="#5de8cf" stroke-width="8"/>
+    <rect x="82" y="84" width="76" height="136" rx="38" fill="url(#mic)"/>
+    <rect x="114" y="216" width="12" height="44" rx="6" fill="#e9fffa"/>
+    <rect x="86" y="252" width="68" height="18" rx="9" fill="#e9fffa"/>
+    <text x="120" y="352" text-anchor="middle" font-size="36" font-family="Helvetica, Arial, sans-serif" fill="#a4ffee">VOICE</text>
+  </g>
+
+  <path d="M368 512 H442" stroke="#71f5de" stroke-width="18" stroke-linecap="round"/>
+  <polygon points="424,482 474,512 424,542" fill="#71f5de"/>
+
+  <g transform="translate(392 384)">
+    <rect x="0" y="0" width="240" height="256" rx="40" fill="#1b5c55" stroke="#67f0d9" stroke-width="8"/>
+    <text x="120" y="156" text-anchor="middle" font-size="86" font-family="Helvetica, Arial, sans-serif" font-weight="700" fill="#ddfff8">AI</text>
+  </g>
+
+  <path d="M644 512 H716" stroke="#71f5de" stroke-width="18" stroke-linecap="round"/>
+  <polygon points="698,482 748,512 698,542" fill="#71f5de"/>
+
+  <g transform="translate(668 304)">
+    <rect x="0" y="0" width="240" height="416" rx="50" fill="#e9fffa" stroke="#7cefd9" stroke-width="8"/>
+    <rect x="34" y="82" width="170" height="18" rx="9" fill="#1d8f79"/>
+    <rect x="34" y="128" width="136" height="18" rx="9" fill="#28a18a"/>
+    <rect x="34" y="174" width="186" height="18" rx="9" fill="#35b49b"/>
+    <rect x="34" y="220" width="110" height="18" rx="9" fill="#43c8ad"/>
+    <rect x="34" y="266" width="158" height="18" rx="9" fill="#28a18a"/>
+    <text x="120" y="352" text-anchor="middle" font-size="36" font-family="Helvetica, Arial, sans-serif" fill="#1f7d69">TEXT</text>
+  </g>
+
+  <text x="512" y="842" text-anchor="middle" font-size="64" font-family="Helvetica, Arial, sans-serif" font-weight="700" letter-spacing="1" fill="#7bf7e2">Whisper Anywhere</text>
+</svg>
