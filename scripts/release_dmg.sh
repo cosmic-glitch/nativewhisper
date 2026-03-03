@@ -125,6 +125,7 @@ fi
 APP_BUNDLE_PATH="$DIST_DIR/$APP_BUNDLE_NAME"
 DMG_STAGING_PATH="$DIST_DIR/dmg-root"
 DMG_PATH="$DIST_DIR/${DMG_BASENAME}-${VERSION}.dmg"
+APP_ZIP_PATH="$DIST_DIR/${APP_PRODUCT_NAME}-${VERSION}.zip"
 EXECUTABLE_PATH="$APP_BUNDLE_PATH/Contents/MacOS/$EXECUTABLE_NAME"
 INFO_PLIST_PATH="$APP_BUNDLE_PATH/Contents/Info.plist"
 RESOURCE_BUNDLE_PATH="$BUILD_DIR/${EXECUTABLE_NAME}_${EXECUTABLE_NAME}.bundle"
@@ -155,7 +156,7 @@ swift build -c release
 
 log "Preparing output directory: $DIST_DIR"
 mkdir -p "$DIST_DIR"
-rm -rf "$APP_BUNDLE_PATH" "$DMG_STAGING_PATH" "$DMG_PATH"
+rm -rf "$APP_BUNDLE_PATH" "$DMG_STAGING_PATH" "$DMG_PATH" "$APP_ZIP_PATH"
 mkdir -p "$APP_BUNDLE_PATH/Contents/MacOS" "$APP_BUNDLE_PATH/Contents/Resources"
 
 cp "$BUILD_DIR/$EXECUTABLE_NAME" "$EXECUTABLE_PATH"
@@ -195,19 +196,16 @@ cat > "$INFO_PLIST_PATH" <<PLIST
 PLIST
 
 log "Signing app bundle with Developer ID identity"
-if compgen -G "$APP_BUNDLE_PATH/Contents/Resources/*.bundle" >/dev/null 2>&1; then
-  for bundle in "$APP_BUNDLE_PATH"/Contents/Resources/*.bundle; do
-    codesign --force --sign "$IDENTITY" --timestamp "$bundle"
-  done
-fi
-
 codesign --force --sign "$IDENTITY" --options runtime --timestamp "$EXECUTABLE_PATH"
 codesign --force --sign "$IDENTITY" --options runtime --timestamp "$APP_BUNDLE_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE_PATH"
 
 if [[ "$SKIP_NOTARIZE" == false ]]; then
-  log "Submitting app bundle for notarization"
-  xcrun notarytool submit "$APP_BUNDLE_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
+  log "Creating zip for app notarization submission"
+  ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE_PATH" "$APP_ZIP_PATH"
+
+  log "Submitting app zip for notarization"
+  xcrun notarytool submit "$APP_ZIP_PATH" --keychain-profile "$NOTARY_PROFILE" --wait
 
   log "Stapling app bundle"
   xcrun stapler staple "$APP_BUNDLE_PATH"
