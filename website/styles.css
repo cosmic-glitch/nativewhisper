@@ -111,6 +111,10 @@ main {
   gap: 0.72rem;
 }
 
+.headline-text {
+  display: block;
+}
+
 .headline-logo {
   width: clamp(36px, 5vw, 52px);
   height: clamp(36px, 5vw, 52px);
