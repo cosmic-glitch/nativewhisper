@@ -13,9 +13,6 @@ enum AppReadinessStatus {
     case ready
     case notEnoughPermissions
     case openAIKeyNotConfigured
-    case backendNotConfigured
-    case signInRequired
-    case servicePaused
 
     var label: String {
         switch self {
@@ -25,19 +22,7 @@ enum AppReadinessStatus {
             return "Not enough permissions"
         case .openAIKeyNotConfigured:
             return "OpenAI key not configured"
-        case .backendNotConfigured:
-            return "Backend not configured"
-        case .signInRequired:
-            return "Sign in required"
-        case .servicePaused:
-            return "Service paused"
         }
-    }
-}
-
-private struct UnavailableTranscriptionClient: Transcribing {
-    func transcribe(audioURL: URL) async throws -> String {
-        throw BackendTranscriptionError.backendNotConfigured
     }
 }
 
@@ -67,10 +52,7 @@ final class MenuBarController: ObservableObject {
     @Published private(set) var permissionSnapshot: PermissionSnapshot
     @Published private(set) var monitorErrorMessage: String?
     @Published private(set) var apiKeyConfigured: Bool
-    @Published private(set) var authSession: AuthSession?
-    @Published private(set) var quotaStatus: QuotaStatus?
     @Published private(set) var authStatusMessage: String?
-    @Published private(set) var selectedTranscriptionRoute: TranscriptionRoute
 
     private let permissionService: PermissionProviding
     private let notifier: Notifying
@@ -84,11 +66,6 @@ final class MenuBarController: ObservableObject {
     private let firstLaunchConfigurationKey: String
     private let legacyFirstLaunchConfigurationKey: String
     private let legacyBundleIdentifier: String
-    private let transcriptionRouteStore: TranscriptionRouteStoring
-    private let sessionStore: SessionStoring
-    private let deviceIdentityStore: DeviceIdentifying
-    private let authClient: BackendAuthenticating?
-    private let googleSignInService: GoogleSignInProviding
     private let stateSink: DictationStateSink
     private let eventSink: DictationEventSink
     private let coordinator: DictationCoordinator
@@ -101,84 +78,9 @@ final class MenuBarController: ObservableObject {
 
     let config: AppConfig
 
-    var hostedModeEnabled: Bool {
-        selectedTranscriptionRoute == .hosted
-    }
-
-    var availableTranscriptionRoutes: [TranscriptionRoute] {
-        if config.hostedModeEnabled {
-            return [.hosted, .direct]
-        }
-        return [.direct]
-    }
-
-    var canUseHostedRoute: Bool {
-        config.hostedModeEnabled
-    }
-
-    var shouldShowLegacyAPIKeyEntry: Bool {
-        config.allowLegacyPersonalKeyEntry
-    }
-
-    var backendConfigured: Bool {
-        config.backendBaseURL != nil
-    }
-
-    var transcriptionRouteStatusText: String {
-        switch selectedTranscriptionRoute {
-        case .hosted:
-            return "Hosted mode"
-        case .direct:
-            return "Direct OpenAI mode"
-        }
-    }
-
-    var signedInEmail: String? {
-        guard let email = authSession?.email.trimmingCharacters(in: .whitespacesAndNewlines), !email.isEmpty else {
-            return nil
-        }
-        return email
-    }
-
-    var isSignedIn: Bool {
-        authSession != nil
-    }
-
-    var backendURLText: String {
-        config.backendBaseURL?.absoluteString ?? "Not configured"
-    }
-
-    var quotaSummaryText: String {
-        guard hostedModeEnabled else {
-            return ""
-        }
-
-        guard let quotaStatus else {
-            return "Daily usage: unavailable"
-        }
-
-        return "Daily remaining: \(quotaStatus.remainingToday) of \(quotaStatus.deviceCap)"
-    }
-
-    var authSummaryText: String {
-        if hostedModeEnabled {
-            if let signedInEmail {
-                return "Signed in as \(signedInEmail)"
-            }
-            return "Not signed in"
-        }
-
-        return apiKeyConfigured ? "API key configured" : "API key not configured"
-    }
-
     init(
         config: AppConfig? = nil,
         apiKeyStore: APIKeyStoring = APIKeyStore.shared,
-        transcriptionRouteStore: TranscriptionRouteStoring = TranscriptionRouteStore.shared,
-        sessionStore: SessionStoring = KeychainSessionStore.shared,
-        deviceIdentityStore: DeviceIdentifying = DeviceIdentityStore.shared,
-        authClient: BackendAuthenticating? = nil,
-        googleSignInService: GoogleSignInProviding? = nil,
         configurationPresenter: ConfigurationPresenting = ConfigurationWindowController(),
         appDefaults: UserDefaults = .standard,
         firstLaunchConfigurationKey: String = "WhisperAnywhere.DidShowConfigurationOnFirstLaunch",
@@ -191,6 +93,7 @@ final class MenuBarController: ObservableObject {
         textInserter: TextInserting = TextInsertionService(),
         focusResolver: FocusResolving = FocusResolver(),
         clipboard: ClipboardWriting = ClipboardService(),
+        dictationLogger: DictationLogging = DictationLogStore.shared,
         chimeService: Chiming = SystemChimeService(),
         hudController: RecordingHUDControlling = RecordingHUDWindowController(),
         autoStart: Bool = true
@@ -199,14 +102,11 @@ final class MenuBarController: ObservableObject {
 
         self.config = resolvedConfig
         self.apiKeyStore = apiKeyStore
-        self.sessionStore = sessionStore
-        self.deviceIdentityStore = deviceIdentityStore
         self.configurationPresenter = configurationPresenter
         self.appDefaults = appDefaults
         self.firstLaunchConfigurationKey = firstLaunchConfigurationKey
         self.legacyFirstLaunchConfigurationKey = legacyFirstLaunchConfigurationKey
         self.legacyBundleIdentifier = legacyBundleIdentifier
-        self.transcriptionRouteStore = transcriptionRouteStore
         self.permissionService = permissionService
         self.notifier = notifier
         self.fnMonitor = fnMonitor
@@ -216,68 +116,19 @@ final class MenuBarController: ObservableObject {
         self.stateSink = DictationStateSink()
         self.eventSink = DictationEventSink()
         self.permissionSnapshot = permissionService.snapshot()
-
-        let persistedRoute = transcriptionRouteStore.currentRoute()
-        let initialRoute: TranscriptionRoute
-        if resolvedConfig.hostedModeEnabled {
-            initialRoute = persistedRoute
-        } else {
-            initialRoute = .direct
-            transcriptionRouteStore.saveRoute(.direct)
-        }
-        self.selectedTranscriptionRoute = initialRoute
-
-        let resolvedAuthClient: BackendAuthenticating?
-        if let authClient {
-            resolvedAuthClient = authClient
-        } else if resolvedConfig.hostedModeEnabled,
-                  let backendBaseURL = resolvedConfig.backendBaseURL {
-            resolvedAuthClient = BackendAuthClient(baseURL: backendBaseURL)
-        } else {
-            resolvedAuthClient = nil
-        }
-        self.authClient = resolvedAuthClient
-
-        if let googleSignInService {
-            self.googleSignInService = googleSignInService
-        } else {
-            self.googleSignInService = GoogleSignInService(callbackURL: resolvedConfig.googleAuthCallbackURL)
-        }
-
-        let initialSession = initialRoute == .hosted ? sessionStore.loadSession() : nil
-        self.authSession = initialSession
-        self.apiKeyConfigured = initialRoute == .hosted ? (initialSession != nil) : !resolvedConfig.openAIKey.isEmpty
-
-        let hostedTranscriptionClient: Transcribing
-        if let resolvedAuthClient,
-           let backendBaseURL = resolvedConfig.backendBaseURL {
-            hostedTranscriptionClient = BackendTranscriptionClient(
-                baseURL: backendBaseURL,
-                sessionStore: sessionStore,
-                authClient: resolvedAuthClient,
-                deviceIDProvider: deviceIdentityStore,
-                language: resolvedConfig.language
-            )
-        } else {
-            hostedTranscriptionClient = UnavailableTranscriptionClient()
-        }
-
-        let directTranscriptionClient = OpenAITranscriptionClient(config: resolvedConfig)
-        let transcriptionClient = HybridTranscriptionClient(
-            routeProvider: { transcriptionRouteStore.currentRoute() },
-            hostedClient: hostedTranscriptionClient,
-            directClient: directTranscriptionClient
-        )
+        self.apiKeyConfigured = !resolvedConfig.openAIKey.isEmpty
 
         self.coordinator = DictationCoordinator(
             audioCapture: audioCapture,
-            transcriptionClient: transcriptionClient,
+            transcriptionClient: OpenAITranscriptionClient(config: resolvedConfig),
             textInserter: textInserter,
             focusResolver: focusResolver,
             clipboard: clipboard,
             permissionService: permissionService,
             notifier: notifier,
             config: resolvedConfig,
+            dictationLogger: dictationLogger,
+            transcriptionProviderLabel: { "openai_direct" },
             stateDidChange: { [weak stateSink] newState in
                 stateSink?.publish(newState)
             },
@@ -306,30 +157,6 @@ final class MenuBarController: ObservableObject {
     }
 
     var readinessStatus: AppReadinessStatus {
-        if hostedModeEnabled {
-            guard canUseHostedRoute else {
-                return .backendNotConfigured
-            }
-
-            guard backendConfigured else {
-                return .backendNotConfigured
-            }
-
-            guard isSignedIn else {
-                return .signInRequired
-            }
-
-            if quotaStatus?.isServicePaused == true {
-                return .servicePaused
-            }
-
-            guard hasRequiredPermissions else {
-                return .notEnoughPermissions
-            }
-
-            return .ready
-        }
-
         if !apiKeyConfigured {
             return .openAIKeyNotConfigured
         }
@@ -342,7 +169,7 @@ final class MenuBarController: ObservableObject {
     }
 
     var statusText: String {
-        "\(transcriptionRouteStatusText) • \(readinessStatus.label)"
+        readinessStatus.label
     }
 
     var menuIconName: String {
@@ -371,7 +198,6 @@ final class MenuBarController: ObservableObject {
         }
 
         refreshPermissions()
-        restoreHostedSessionIfNeeded()
         showConfigurationOnFirstLaunchIfNeeded()
 
         do {
@@ -403,137 +229,17 @@ final class MenuBarController: ObservableObject {
         configurationPresenter.show(controller: self)
     }
 
+    func dismissConfiguration() {
+        configurationPresenter.dismiss()
+    }
+
     func currentAPIKey() -> String {
-        guard selectedTranscriptionRoute == .direct || shouldShowLegacyAPIKeyEntry else {
-            return ""
-        }
-        return config.openAIKey
+        config.openAIKey
     }
 
     func saveAPIKey(_ value: String) {
-        guard selectedTranscriptionRoute == .direct || shouldShowLegacyAPIKeyEntry else {
-            return
-        }
-
         apiKeyStore.saveAPIKey(value)
         syncAPIKeyStatus()
-    }
-
-    func setTranscriptionRoute(_ route: TranscriptionRoute) {
-        guard route != selectedTranscriptionRoute else {
-            return
-        }
-
-        guard case .idle = dictationState else {
-            let message = "Finish current dictation before switching modes."
-            authStatusMessage = message
-            showTransientHUDMessage(message)
-            return
-        }
-
-        guard availableTranscriptionRoutes.contains(route) else {
-            authStatusMessage = "Hosted mode is disabled by configuration."
-            return
-        }
-
-        selectedTranscriptionRoute = route
-        transcriptionRouteStore.saveRoute(route)
-
-        if route == .hosted {
-            restoreHostedSessionIfNeeded()
-            Task {
-                await refreshQuotaStatus()
-            }
-        } else {
-            quotaStatus = nil
-            authStatusMessage = nil
-        }
-
-        syncAPIKeyStatus()
-    }
-
-    func signInWithGoogle() async {
-        guard hostedModeEnabled else {
-            authStatusMessage = "Switch to Hosted mode to sign in."
-            return
-        }
-
-        guard canUseHostedRoute else {
-            authStatusMessage = "Hosted mode is disabled by configuration."
-            return
-        }
-
-        guard let authClient else {
-            authStatusMessage = "Backend auth is not configured."
-            return
-        }
-
-        do {
-            authStatusMessage = "Opening Google sign-in..."
-            let deviceID = deviceIdentityStore.deviceID()
-            let startURL = try await authClient.beginGoogleSignIn(
-                deviceID: deviceID,
-                appVersion: appVersionString()
-            )
-            let oauthTokens = try await googleSignInService.authenticate(startURL: startURL)
-            let session = try await authClient.completeGoogleSignIn(
-                oauthTokens: oauthTokens,
-                deviceID: deviceID
-            )
-            try sessionStore.saveSession(session)
-            authSession = session
-            syncAPIKeyStatus()
-            authStatusMessage = "Signed in as \(session.email)."
-            await refreshQuotaStatus()
-        } catch let error as GoogleSignInError {
-            authStatusMessage = error.localizedDescription
-            if error != .cancelled {
-                notifier.notify(title: "Whisper Anywhere", body: error.localizedDescription)
-            }
-        } catch {
-            let message = error.localizedDescription
-            authStatusMessage = message
-            notifier.notify(title: "Whisper Anywhere", body: message)
-        }
-    }
-
-    func signOutHostedSession() {
-        do {
-            try sessionStore.clearSession()
-        } catch {
-            notifier.notify(title: "Whisper Anywhere", body: error.localizedDescription)
-        }
-
-        authSession = nil
-        quotaStatus = nil
-        authStatusMessage = "Signed out."
-        syncAPIKeyStatus()
-    }
-
-    func refreshQuotaStatus() async {
-        guard hostedModeEnabled, canUseHostedRoute else {
-            quotaStatus = nil
-            return
-        }
-
-        await refreshHostedSessionIfNeeded(force: false)
-
-        guard let authClient,
-              let authSession else {
-            quotaStatus = nil
-            return
-        }
-
-        do {
-            let quota = try await authClient.fetchQuota(
-                accessToken: authSession.accessToken,
-                deviceID: deviceIdentityStore.deviceID()
-            )
-            quotaStatus = quota
-        } catch {
-            quotaStatus = nil
-            authStatusMessage = error.localizedDescription
-        }
     }
 
     func permissionLabel(for state: PermissionState) -> String {
@@ -639,69 +345,13 @@ final class MenuBarController: ObservableObject {
         appDefaults.set(legacyDefaults.bool(forKey: legacyFirstLaunchConfigurationKey), forKey: firstLaunchConfigurationKey)
     }
 
-    private func restoreHostedSessionIfNeeded() {
-        guard hostedModeEnabled, canUseHostedRoute else {
-            return
-        }
-
-        authSession = sessionStore.loadSession()
-        syncAPIKeyStatus()
-
-        guard authSession != nil else {
-            return
-        }
-
-        Task { [weak self] in
-            guard let self else {
-                return
-            }
-
-            await refreshHostedSessionIfNeeded(force: false)
-            await refreshQuotaStatus()
-        }
-    }
-
-    private func refreshHostedSessionIfNeeded(force: Bool) async {
-        guard hostedModeEnabled,
-              canUseHostedRoute,
-              let authClient,
-              let currentSession = authSession else {
-            return
-        }
-
-        guard force || currentSession.isExpired else {
-            return
-        }
-
-        do {
-            let refreshed = try await authClient.refreshSession(refreshToken: currentSession.refreshToken)
-            try sessionStore.saveSession(refreshed)
-            authSession = refreshed
-            syncAPIKeyStatus()
-        } catch {
-            authSession = nil
-            quotaStatus = nil
-            syncAPIKeyStatus()
-            try? sessionStore.clearSession()
-            authStatusMessage = "Session expired. Sign in again."
-        }
-    }
-
     private func syncAPIKeyStatus() {
-        if hostedModeEnabled {
-            apiKeyConfigured = authSession != nil
-        } else {
-            apiKeyConfigured = !config.openAIKey.isEmpty
-        }
+        apiKeyConfigured = !config.openAIKey.isEmpty
     }
 
     private func handleFnEvent(_ event: FnKeyEvent) {
         Task {
             if event == .pressed {
-                if hostedModeEnabled {
-                    await refreshHostedSessionIfNeeded(force: false)
-                }
-
                 guard canStartDictationFromCurrentState() else {
                     await MainActor.run {
                         self.refreshPermissions()
@@ -719,45 +369,15 @@ final class MenuBarController: ObservableObject {
             await MainActor.run {
                 self.refreshPermissions()
             }
-
-            if hostedModeEnabled, event == .released {
-                await refreshQuotaStatus()
-            }
         }
     }
 
     private func canStartDictationFromCurrentState() -> Bool {
-        switch selectedTranscriptionRoute {
-        case .hosted:
-            guard canUseHostedRoute else {
-                notifier.notify(title: "Whisper Anywhere", body: "Hosted mode is disabled by configuration.")
-                return false
-            }
-
-            guard backendConfigured else {
-                notifier.notify(title: "Whisper Anywhere", body: "Backend base URL is not configured.")
-                return false
-            }
-
-            guard authSession != nil else {
-                notifier.notify(title: "Whisper Anywhere", body: "Sign in required. Open Configure.")
-                return false
-            }
-
-            if quotaStatus?.isServicePaused == true {
-                notifier.notify(title: "Whisper Anywhere", body: "Service paused (daily budget reached).")
-                return false
-            }
-
-            return true
-
-        case .direct:
-            if config.openAIKey.isEmpty {
-                notifier.notify(title: "Whisper Anywhere", body: "OpenAI key not configured for Direct mode.")
-                return false
-            }
-            return true
+        if config.openAIKey.isEmpty {
+            notifier.notify(title: "Whisper Anywhere", body: "OpenAI key is not configured. Open Configure.")
+            return false
         }
+        return true
     }
 
     private func handleStateTransition(from oldState: DictationState, to newState: DictationState) {
@@ -882,14 +502,5 @@ final class MenuBarController: ObservableObject {
             return true
         }
         return false
-    }
-
-    private func appVersionString() -> String {
-        if let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-           !short.isEmpty {
-            return short
-        }
-
-        return "dev"
     }
 }

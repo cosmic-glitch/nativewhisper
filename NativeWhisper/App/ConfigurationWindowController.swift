@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor
 protocol ConfigurationPresenting: AnyObject {
     func show(controller: MenuBarController)
+    func dismiss()
 }
 
 @MainActor
@@ -15,6 +16,13 @@ final class ConfigurationWindowController: ConfigurationPresenting {
         window.contentView = NSHostingView(rootView: ConfigurationView(controller: controller))
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func dismiss() {
+        guard let window else {
+            return
+        }
+        window.close()
     }
 
     private func makeWindow() -> NSWindow {
