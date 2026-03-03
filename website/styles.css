@@ -82,10 +82,6 @@ main {
 }
 
 .hero {
-  display: grid;
-  grid-template-columns: 1.45fr 0.55fr;
-  gap: 1.4rem;
-  align-items: center;
   padding: 2rem 0 3.3rem;
 }
 
@@ -107,6 +103,20 @@ main {
 
 .hero h1 .headline-line {
   display: block;
+}
+
+.headline-with-logo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.72rem;
+}
+
+.headline-logo {
+  width: clamp(36px, 5vw, 52px);
+  height: clamp(36px, 5vw, 52px);
+  margin-top: 0.14rem;
+  border-radius: 0.7rem;
+  flex-shrink: 0;
 }
 
 .hero h1 .headline-line-1 {
@@ -167,18 +177,6 @@ code {
   margin: 0.85rem 0 0;
   color: var(--text-muted);
   font-size: 0.85rem;
-}
-
-.hero-art {
-  justify-self: center;
-  width: min(220px, 48vw);
-}
-
-.hero-art img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 1.2rem;
 }
 
 .section {
@@ -302,15 +300,6 @@ details a {
 }
 
 @media (max-width: 900px) {
-  .hero {
-    grid-template-columns: 1fr;
-    gap: 1rem;
-  }
-
-  .hero-art {
-    width: min(320px, 72vw);
-  }
-
   .card-grid,
   .philosophy-list {
     grid-template-columns: 1fr;
@@ -332,6 +321,20 @@ details a {
 
   .hero h1 {
     font-size: clamp(1.4rem, 8vw, 2.9rem);
+  }
+
+  .headline-with-logo {
+    gap: 0.5rem;
+  }
+
+  .headline-logo {
+    width: 34px;
+    height: 34px;
+    margin-top: 0.1rem;
+  }
+
+  .hero h1 .headline-line-1 {
+    white-space: normal;
   }
 
   .nav-links {
