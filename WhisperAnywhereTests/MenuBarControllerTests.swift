@@ -100,16 +100,143 @@ final class MenuBarControllerTests: XCTestCase {
         XCTAssertEqual(presenter.dismissCalls, 1)
     }
 
+    func testPrepareMicrophonePermissionOnSetupOpenRequestsWhenNotDetermined() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .notDetermined, accessibility: .granted, inputMonitoring: .granted)
+        )
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 1)
+        XCTAssertEqual(controller.permissionSnapshot.microphone, .granted)
+        XCTAssertTrue(defaults.bool(forKey: promptKey))
+        XCTAssertFalse(controller.isPreparingInitialMicrophonePrompt)
+    }
+
+    func testPrepareMicrophonePermissionOnSetupOpenSkipsWhenMicrophoneAlreadyGranted() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .granted, accessibility: .granted, inputMonitoring: .granted)
+        )
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 0)
+        XCTAssertFalse(defaults.bool(forKey: promptKey))
+    }
+
+    func testPrepareMicrophonePermissionOnSetupOpenSkipsWhenMicrophoneDenied() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .denied, accessibility: .granted, inputMonitoring: .granted)
+        )
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 0)
+        XCTAssertFalse(defaults.bool(forKey: promptKey))
+    }
+
+    func testPrepareMicrophonePermissionOnSetupOpenSkipsWhenInitialAttemptAlreadyRecorded() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .notDetermined, accessibility: .granted, inputMonitoring: .granted)
+        )
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        defaults.set(true, forKey: promptKey)
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 0)
+        XCTAssertEqual(controller.permissionSnapshot.microphone, .notDetermined)
+    }
+
+    func testPrepareMicrophonePermissionOnSetupOpenTracksDeniedResultAndDoesNotRePrompt() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .notDetermined, accessibility: .granted, inputMonitoring: .granted)
+        )
+        permissionService.microphoneRequestResult = false
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+        await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 1)
+        XCTAssertEqual(controller.permissionSnapshot.microphone, .denied)
+        XCTAssertTrue(defaults.bool(forKey: promptKey))
+    }
+
+    func testPrepareMicrophonePermissionOnSetupOpenInFlightGuardPreventsDuplicateRequests() async {
+        let permissionService = MenuMockPermissionService(
+            snapshot: PermissionSnapshot(microphone: .notDetermined, accessibility: .granted, inputMonitoring: .granted)
+        )
+        permissionService.microphoneRequestDelayNanoseconds = 150_000_000
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil, permissionService: permissionService)
+        let defaults = makeIsolatedDefaults()
+        let promptKey = "MenuBarControllerTests.DidAttemptInitialMicrophonePrompt"
+        let controller = makeController(
+            mocks: mocks,
+            appDefaults: defaults,
+            initialMicrophonePromptAttemptKey: promptKey
+        )
+
+        async let first: Void = controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+        async let second: Void = controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+        _ = await (first, second)
+
+        XCTAssertEqual(permissionService.microphoneRequestCount, 1)
+        XCTAssertFalse(controller.isPreparingInitialMicrophonePrompt)
+    }
+
     private func makeController(
         mocks: ControllerMocks,
         config: AppConfig = AppConfig(openAIKey: "test", model: "gpt-4o-mini-transcribe", language: "en"),
         apiKeyStore: APIKeyStoring = MenuMockAPIKeyStore(initialValue: "test"),
-        configurationPresenter: ConfigurationPresenting = MenuMockConfigurationPresenter()
+        configurationPresenter: ConfigurationPresenting = MenuMockConfigurationPresenter(),
+        appDefaults: UserDefaults = .standard,
+        initialMicrophonePromptAttemptKey: String = "WhisperAnywhere.DidAttemptInitialMicrophonePrompt"
     ) -> MenuBarController {
         MenuBarController(
             config: config,
             apiKeyStore: apiKeyStore,
             configurationPresenter: configurationPresenter,
+            appDefaults: appDefaults,
+            initialMicrophonePromptAttemptKey: initialMicrophonePromptAttemptKey,
             permissionService: mocks.permissionService,
             notifier: mocks.notifier,
             fnMonitor: mocks.fnMonitor,
@@ -122,15 +249,28 @@ final class MenuBarControllerTests: XCTestCase {
         )
     }
 
-    private func makeMocks(audioLevel: Float, bands: [Float]?) -> ControllerMocks {
+    private func makeMocks(
+        audioLevel: Float,
+        bands: [Float]?,
+        permissionService: MenuMockPermissionService = MenuMockPermissionService()
+    ) -> ControllerMocks {
         ControllerMocks(
-            permissionService: MenuMockPermissionService(),
+            permissionService: permissionService,
             notifier: MenuMockNotifier(),
             fnMonitor: MenuMockFnMonitor(),
             audioCapture: MenuMockAudioCapture(level: audioLevel, bands: bands),
             chime: MenuMockChimeService(),
             hud: MenuMockHUDController()
         )
+    }
+
+    private func makeIsolatedDefaults() -> UserDefaults {
+        let suiteName = "MenuBarControllerTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create isolated UserDefaults suite.")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
     }
 }
 
@@ -144,20 +284,53 @@ private struct ControllerMocks {
 }
 
 private final class MenuMockPermissionService: PermissionProviding, @unchecked Sendable {
+    private var snapshotValue: PermissionSnapshot
+    private(set) var microphoneRequestCount = 0
+    var microphoneRequestResult = true
+    var microphoneRequestDelayNanoseconds: UInt64 = 0
+
+    init(snapshot: PermissionSnapshot = PermissionSnapshot(microphone: .granted, accessibility: .granted, inputMonitoring: .granted)) {
+        snapshotValue = snapshot
+    }
+
     func snapshot() -> PermissionSnapshot {
-        PermissionSnapshot(microphone: .granted, accessibility: .granted, inputMonitoring: .granted)
+        return snapshotValue
     }
 
     func requestMicrophoneAccess() async -> Bool {
-        true
+        microphoneRequestCount += 1
+        let result = microphoneRequestResult
+        let delay = microphoneRequestDelayNanoseconds
+
+        if delay > 0 {
+            try? await Task.sleep(nanoseconds: delay)
+        }
+
+        snapshotValue = PermissionSnapshot(
+            microphone: result ? .granted : .denied,
+            accessibility: snapshotValue.accessibility,
+            inputMonitoring: snapshotValue.inputMonitoring
+        )
+
+        return result
     }
 
     func requestAccessibilityAccess() -> Bool {
-        true
+        snapshotValue = PermissionSnapshot(
+            microphone: snapshotValue.microphone,
+            accessibility: .granted,
+            inputMonitoring: snapshotValue.inputMonitoring
+        )
+        return true
     }
 
     func requestInputMonitoringAccess() -> Bool {
-        true
+        snapshotValue = PermissionSnapshot(
+            microphone: snapshotValue.microphone,
+            accessibility: snapshotValue.accessibility,
+            inputMonitoring: .granted
+        )
+        return true
     }
 }
 

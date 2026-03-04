@@ -12,6 +12,7 @@ ICON_SOURCE="$ROOT_DIR/WhisperAnywhere/Resources/AppIcon.icns"
 BUILD_DIR="$ROOT_DIR/.build/release"
 DIST_DIR="$ROOT_DIR/dist"
 VOLUME_NAME="Whisper Anywhere"
+ENTITLEMENTS_PATH="$ROOT_DIR/scripts/whisperanywhere.entitlements"
 
 IDENTITY="${DEVELOPER_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
@@ -147,6 +148,7 @@ if [[ "$SKIP_NOTARIZE" == false ]]; then
 fi
 
 [[ -f "$ICON_SOURCE" ]] || die "Icon file not found: $ICON_SOURCE"
+[[ -f "$ENTITLEMENTS_PATH" ]] || die "Entitlements file not found: $ENTITLEMENTS_PATH"
 
 log "Building release binary"
 cd "$ROOT_DIR"
@@ -196,8 +198,8 @@ cat > "$INFO_PLIST_PATH" <<PLIST
 PLIST
 
 log "Signing app bundle with Developer ID identity"
-codesign --force --sign "$IDENTITY" --options runtime --timestamp "$EXECUTABLE_PATH"
-codesign --force --sign "$IDENTITY" --options runtime --timestamp "$APP_BUNDLE_PATH"
+codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements "$ENTITLEMENTS_PATH" "$EXECUTABLE_PATH"
+codesign --force --sign "$IDENTITY" --options runtime --timestamp --entitlements "$ENTITLEMENTS_PATH" "$APP_BUNDLE_PATH"
 codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE_PATH"
 
 if [[ "$SKIP_NOTARIZE" == false ]]; then

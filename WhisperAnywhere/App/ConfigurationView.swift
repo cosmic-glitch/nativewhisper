@@ -42,6 +42,9 @@ struct ConfigurationView: View {
             controller.refreshPermissions()
             apiKeyDraft = controller.currentAPIKey()
             saveMessage = nil
+            Task {
+                await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
+            }
         }
     }
 
@@ -92,15 +95,7 @@ struct ConfigurationView: View {
 
     private var permissionsStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            permissionRow(
-                title: "Microphone",
-                state: controller.permissionSnapshot.microphone,
-                route: "System Settings -> Privacy & Security -> Microphone",
-                actionTitle: "Open Microphone Settings",
-                action: {
-                    controller.openSystemSettings(.microphone)
-                }
-            )
+            microphonePermissionRow
 
             permissionRow(
                 title: "Accessibility",
@@ -123,7 +118,7 @@ struct ConfigurationView: View {
             )
 
             HStack(spacing: 8) {
-                Button("Request permissions") {
+                Button("Request remaining permissions") {
                     controller.testPermissions()
                 }
 
@@ -284,6 +279,57 @@ struct ConfigurationView: View {
                 Text("No action needed")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var microphonePermissionRow: some View {
+        let state = controller.permissionSnapshot.microphone
+
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(state == .granted ? .green : .orange)
+
+                Text("Microphone: \(permissionHeadline(for: state))")
+                    .font(.system(size: 12, weight: .medium))
+            }
+
+            switch state {
+            case .granted:
+                Text("No action needed")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            case .denied:
+                Text("Open: System Settings -> Privacy & Security -> Microphone")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Button("Open Microphone Settings") {
+                    controller.openSystemSettings(.microphone)
+                }
+                .font(.system(size: 11))
+            case .notDetermined:
+                Text(
+                    "We request microphone access automatically. The app appears in Microphone settings only after the first access request."
+                )
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+                if controller.isPreparingInitialMicrophonePrompt {
+                    Text("Requesting access...")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("Allow Microphone Access") {
+                        Task {
+                            await controller.requestMicrophoneAccessFromConfiguration()
+                        }
+                    }
+                    .font(.system(size: 11))
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

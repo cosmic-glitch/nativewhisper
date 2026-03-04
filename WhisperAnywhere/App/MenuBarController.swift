@@ -53,6 +53,7 @@ final class MenuBarController: ObservableObject {
     @Published private(set) var monitorErrorMessage: String?
     @Published private(set) var apiKeyConfigured: Bool
     @Published private(set) var authStatusMessage: String?
+    @Published private(set) var isPreparingInitialMicrophonePrompt = false
 
     private let permissionService: PermissionProviding
     private let notifier: Notifying
@@ -64,6 +65,7 @@ final class MenuBarController: ObservableObject {
     private let configurationPresenter: ConfigurationPresenting
     private let appDefaults: UserDefaults
     private let firstLaunchConfigurationKey: String
+    private let initialMicrophonePromptAttemptKey: String
     private let legacyFirstLaunchConfigurationKey: String
     private let legacyBundleIdentifier: String
     private let stateSink: DictationStateSink
@@ -87,6 +89,7 @@ final class MenuBarController: ObservableObject {
         configurationPresenter: ConfigurationPresenting = ConfigurationWindowController(),
         appDefaults: UserDefaults = .standard,
         firstLaunchConfigurationKey: String = "WhisperAnywhere.DidShowConfigurationOnFirstLaunch",
+        initialMicrophonePromptAttemptKey: String = "WhisperAnywhere.DidAttemptInitialMicrophonePrompt",
         legacyFirstLaunchConfigurationKey: String = "NativeWhisper.DidShowConfigurationOnFirstLaunch",
         legacyBundleIdentifier: String = "ai.nativewhisper.app",
         permissionService: PermissionProviding = PermissionService(),
@@ -106,6 +109,7 @@ final class MenuBarController: ObservableObject {
         self.configurationPresenter = configurationPresenter
         self.appDefaults = appDefaults
         self.firstLaunchConfigurationKey = firstLaunchConfigurationKey
+        self.initialMicrophonePromptAttemptKey = initialMicrophonePromptAttemptKey
         self.legacyFirstLaunchConfigurationKey = legacyFirstLaunchConfigurationKey
         self.legacyBundleIdentifier = legacyBundleIdentifier
         self.permissionService = permissionService
@@ -221,6 +225,36 @@ final class MenuBarController: ObservableObject {
             _ = permissionService.requestInputMonitoringAccess()
             refreshPermissions()
         }
+    }
+
+    func requestMicrophoneAccessFromConfiguration() async {
+        _ = await permissionService.requestMicrophoneAccess()
+        refreshPermissions()
+    }
+
+    func prepareMicrophonePermissionOnSetupOpenIfNeeded() async {
+        if isPreparingInitialMicrophonePrompt {
+            return
+        }
+
+        isPreparingInitialMicrophonePrompt = true
+        defer {
+            isPreparingInitialMicrophonePrompt = false
+        }
+
+        refreshPermissions()
+
+        guard permissionSnapshot.microphone == .notDetermined else {
+            return
+        }
+
+        guard !appDefaults.bool(forKey: initialMicrophonePromptAttemptKey) else {
+            return
+        }
+
+        appDefaults.set(true, forKey: initialMicrophonePromptAttemptKey)
+        _ = await permissionService.requestMicrophoneAccess()
+        refreshPermissions()
     }
 
     func openConfiguration() {
