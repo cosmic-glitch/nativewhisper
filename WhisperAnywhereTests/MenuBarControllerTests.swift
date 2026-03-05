@@ -8,13 +8,13 @@ final class MenuBarControllerTests: XCTestCase {
         let mocks = makeMocks(audioLevel: 0.52, bands: [0.12, 0.28, 0.74, 0.33, 0.14])
         let controller = makeController(mocks: mocks)
 
-        controller.applyStateUpdate(.recording(Date()))
+        controller.applyStateUpdate(.recording(Date(), .dictation))
         try? await Task.sleep(nanoseconds: 120_000_000)
 
         XCTAssertEqual(mocks.chime.playCount, 1)
         XCTAssertEqual(mocks.hud.showCount, 1)
         XCTAssertGreaterThan(mocks.hud.updateCount, 0)
-        XCTAssertTrue(mocks.hud.didReceiveBandUpdate)
+        XCTAssertFalse(mocks.hud.didReceiveBandUpdate)
         XCTAssertEqual(mocks.hud.lastMode, .recording)
     }
 
@@ -32,7 +32,7 @@ final class MenuBarControllerTests: XCTestCase {
         let mocks = makeMocks(audioLevel: 0.9, bands: [0.18, 0.42, 0.88, 0.4, 0.22])
         let controller = makeController(mocks: mocks)
 
-        controller.applyStateUpdate(.recording(Date()))
+        controller.applyStateUpdate(.recording(Date(), .dictation))
         try? await Task.sleep(nanoseconds: 150_000_000)
         let beforeStopUpdates = mocks.hud.updateCount
 
@@ -46,6 +46,31 @@ final class MenuBarControllerTests: XCTestCase {
 
         controller.applyStateUpdate(.idle)
         XCTAssertEqual(mocks.hud.hideCount, 1)
+    }
+
+    func testEditRecordingStartUsesEditHUDMode() async {
+        let mocks = makeMocks(audioLevel: 0.44, bands: [0.17, 0.31, 0.6, 0.28, 0.11])
+        let controller = makeController(mocks: mocks)
+
+        controller.applyStateUpdate(.recording(Date(), .editCommand))
+        try? await Task.sleep(nanoseconds: 120_000_000)
+
+        XCTAssertEqual(mocks.chime.playCount, 1)
+        XCTAssertEqual(mocks.hud.showCount, 1)
+        XCTAssertEqual(mocks.hud.lastMode, .recordingEditCommand)
+    }
+
+    func testProcessingTransitionFromTranscribingToEditingUpdatesHUDMode() {
+        let mocks = makeMocks(audioLevel: 0.2, bands: nil)
+        let controller = makeController(mocks: mocks)
+
+        controller.applyStateUpdate(.transcribing)
+        let showsAfterTranscribing = mocks.hud.showCount
+        controller.applyStateUpdate(.editing)
+
+        XCTAssertEqual(mocks.hud.lastMode, .editing)
+        XCTAssertEqual(mocks.hud.hideCount, 0)
+        XCTAssertGreaterThanOrEqual(mocks.hud.showCount, showsAfterTranscribing)
     }
 
     func testReadyWhenAPIKeyConfiguredAndPermissionsGranted() {

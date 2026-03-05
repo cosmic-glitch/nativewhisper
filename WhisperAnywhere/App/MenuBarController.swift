@@ -75,10 +75,6 @@ final class MenuBarController: ObservableObject {
     private var meterTask: Task<Void, Never>?
     private var hudMessageTask: Task<Void, Never>?
     private var smoothedLevel: Float = 0.08
-    private var smoothedBands: [Float] = Array(
-        repeating: RecordingHUDModel.waveformFloor,
-        count: RecordingHUDModel.waveformSampleCount
-    )
     private var started = false
 
     let config: AppConfig
@@ -96,6 +92,8 @@ final class MenuBarController: ObservableObject {
         notifier: Notifying = NotificationService(),
         fnMonitor: FnKeyMonitoring = FnKeyMonitor(),
         audioCapture: AudioCapturing = AudioCaptureService(),
+        selectionDetector: SelectionDetecting = CopySelectionDetector(),
+        textEditor: TextEditing? = nil,
         textInserter: TextInserting = TextInsertionService(),
         clipboard: ClipboardWriting = ClipboardService(),
         chimeService: Chiming = SystemChimeService(),
@@ -122,12 +120,15 @@ final class MenuBarController: ObservableObject {
         self.eventSink = DictationEventSink()
         self.permissionSnapshot = permissionService.snapshot()
         self.apiKeyConfigured = !resolvedConfig.openAIKey.isEmpty
+        let resolvedTextEditor = textEditor ?? OpenAIEditClient(config: resolvedConfig)
 
         self.coordinator = DictationCoordinator(
             audioCapture: audioCapture,
             transcriptionClient: OpenAITranscriptionClient(config: resolvedConfig),
+            textEditor: resolvedTextEditor,
             textInserter: textInserter,
             clipboard: clipboard,
+            selectionDetector: selectionDetector,
             permissionService: permissionService,
             notifier: notifier,
             config: resolvedConfig,
@@ -182,6 +183,8 @@ final class MenuBarController: ObservableObject {
             return "mic.fill"
         case .transcribing:
             return "waveform.circle.fill"
+        case .editing:
+            return "sparkles"
         case .inserting:
             return "keyboard"
         case .error:
@@ -415,14 +418,14 @@ final class MenuBarController: ObservableObject {
     private func handleStateTransition(from oldState: DictationState, to newState: DictationState) {
         let wasRecording = isRecordingState(oldState)
         let isRecording = isRecordingState(newState)
-        let wasTranscribing = isTranscribingState(oldState)
-        let isTranscribing = isTranscribingState(newState)
+        let wasProcessing = isProcessingState(oldState)
+        let isProcessing = isProcessingState(newState)
 
         if !wasRecording && isRecording {
             cancelHUDMessageTask()
             chimeService.playStartChime()
-            hudController.setMode(.recording)
-            hudController.update(bands: Array(repeating: 0.08, count: 5))
+            hudController.setMode(recordingHUDMode(for: newState))
+            hudController.update(level: 0.08)
             hudController.show()
             startMeterPolling()
             return
@@ -430,8 +433,8 @@ final class MenuBarController: ObservableObject {
 
         if wasRecording && !isRecording {
             stopMeterPolling()
-            if isTranscribing {
-                hudController.setMode(.transcribing)
+            if isProcessing {
+                hudController.setMode(processingHUDMode(for: newState))
                 hudController.show()
             } else {
                 hudController.hide()
@@ -439,14 +442,20 @@ final class MenuBarController: ObservableObject {
             return
         }
 
-        if !wasTranscribing && isTranscribing {
+        if !wasProcessing && isProcessing {
             cancelHUDMessageTask()
-            hudController.setMode(.transcribing)
+            hudController.setMode(processingHUDMode(for: newState))
             hudController.show()
             return
         }
 
-        if wasTranscribing && !isTranscribing {
+        if wasProcessing && isProcessing && oldState != newState {
+            hudController.setMode(processingHUDMode(for: newState))
+            hudController.show()
+            return
+        }
+
+        if wasProcessing && !isProcessing {
             hudController.hide()
         }
     }
@@ -468,7 +477,7 @@ final class MenuBarController: ObservableObject {
                 return
             }
 
-            if isRecordingState(dictationState) || isTranscribingState(dictationState) {
+            if isRecordingState(dictationState) || isProcessingState(dictationState) {
                 return
             }
 
@@ -484,10 +493,6 @@ final class MenuBarController: ObservableObject {
     private func startMeterPolling() {
         stopMeterPolling()
         smoothedLevel = 0.08
-        smoothedBands = Array(
-            repeating: RecordingHUDModel.waveformFloor,
-            count: RecordingHUDModel.waveformSampleCount
-        )
 
         meterTask = Task { @MainActor [weak self] in
             guard let self else {
@@ -497,13 +502,7 @@ final class MenuBarController: ObservableObject {
             while !Task.isCancelled {
                 let instantaneousLevel = resolvedInstantaneousLevel()
                 smoothedLevel = (0.4 * instantaneousLevel) + (0.6 * smoothedLevel)
-
-                smoothedBands.append(max(smoothedLevel, RecordingHUDModel.waveformFloor))
-                if smoothedBands.count > RecordingHUDModel.waveformSampleCount {
-                    smoothedBands.removeFirst(smoothedBands.count - RecordingHUDModel.waveformSampleCount)
-                }
-
-                hudController.update(bands: smoothedBands)
+                hudController.update(level: smoothedLevel)
                 try? await Task.sleep(nanoseconds: 40_000_000)
             }
         }
@@ -513,10 +512,6 @@ final class MenuBarController: ObservableObject {
         meterTask?.cancel()
         meterTask = nil
         smoothedLevel = 0.08
-        smoothedBands = Array(
-            repeating: RecordingHUDModel.waveformFloor,
-            count: RecordingHUDModel.waveformSampleCount
-        )
     }
 
     private func resolvedInstantaneousLevel() -> Float {
@@ -537,10 +532,30 @@ final class MenuBarController: ObservableObject {
         return false
     }
 
-    private func isTranscribingState(_ state: DictationState) -> Bool {
-        if case .transcribing = state {
-            return true
+    private func recordingHUDMode(for state: DictationState) -> RecordingHUDMode {
+        if case .recording(_, .editCommand) = state {
+            return .recordingEditCommand
         }
-        return false
+        return .recording
+    }
+
+    private func processingHUDMode(for state: DictationState) -> RecordingHUDMode {
+        switch state {
+        case .transcribing:
+            return .transcribing
+        case .editing:
+            return .editing
+        default:
+            return .transcribing
+        }
+    }
+
+    private func isProcessingState(_ state: DictationState) -> Bool {
+        switch state {
+        case .transcribing, .editing:
+            return true
+        default:
+            return false
+        }
     }
 }

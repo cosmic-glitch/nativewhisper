@@ -2,16 +2,19 @@ import SwiftUI
 
 enum RecordingHUDMode: Equatable {
     case recording
+    case recordingEditCommand
     case transcribing
+    case editing
     case message(String)
 }
 
 @MainActor
 final class RecordingHUDModel: ObservableObject {
-    static let waveformSampleCount = 140
+    static let waveformSampleCount = 12
     static let waveformFloor: Float = 0.04
 
     @Published var bands: [Float] = Array(repeating: waveformFloor, count: waveformSampleCount)
+    @Published var level: Float = waveformFloor
     @Published var mode: RecordingHUDMode = .recording
 }
 
@@ -20,30 +23,17 @@ struct RecordingHUDView: View {
 
     var body: some View {
         Group {
-            if model.mode == .recording {
-                HStack(spacing: 10) {
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.92))
-
-                    GeometryReader { geometry in
-                        let barCount = max(model.bands.count, 1)
-                        let spacing: CGFloat = 1
-                        let totalSpacing = CGFloat(barCount - 1) * spacing
-                        let computedWidth = (geometry.size.width - totalSpacing) / CGFloat(barCount)
-                        let barWidth = max(0.8, computedWidth * 0.88)
-
-                        HStack(spacing: spacing) {
-                            ForEach(Array(model.bands.enumerated()), id: \.offset) { _, band in
-                                Capsule(style: .continuous)
-                                    .fill(Color.white.opacity(0.96))
-                                    .frame(width: barWidth, height: barHeight(for: band))
-                                    .frame(maxHeight: .infinity, alignment: .center)
-                            }
-                        }
+            if isRecordingMode {
+                VStack(spacing: 2) {
+                    if model.mode == .recordingEditCommand {
+                        Text("Edit")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
                     }
-                    .frame(height: 24)
-                    .animation(.linear(duration: 0.08), value: model.bands)
+
+                    recordingIndicator
                 }
             } else if model.mode == .transcribing {
                 Text("Transcribing")
@@ -51,17 +41,23 @@ struct RecordingHUDView: View {
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
+            } else if model.mode == .editing {
+                Text("Editing")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
             } else if case let .message(text) = model.mode {
                 Text(text)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
         }
         .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
         .background(Color.clear)
         .background(
             RoundedRectangle(cornerRadius: 11, style: .continuous)
@@ -73,13 +69,48 @@ struct RecordingHUDView: View {
         )
     }
 
-    private func barHeight(for band: Float) -> CGFloat {
-        let clamped = CGFloat(min(max(band, 0), 1))
-        let floor: CGFloat = 0.01
-        let adjusted = max(clamped, floor)
-        let boosted = pow(adjusted, 1.1)
-        let minHeight: CGFloat = 3
-        let dynamicRange: CGFloat = 18
-        return minHeight + (boosted * dynamicRange)
+    private var isRecordingMode: Bool {
+        model.mode == .recording || model.mode == .recordingEditCommand
+    }
+
+    private var recordingIndicator: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "mic.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(Color.white.opacity(dotOpacity(for: index)))
+                        .scaleEffect(dotScale(for: index))
+                        .frame(width: 9, height: 9)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.28), lineWidth: 0.6)
+                        )
+                        .shadow(color: .white.opacity(0.25), radius: 1.2)
+                }
+            }
+            .frame(width: 35, alignment: .leading)
+            .frame(height: 16)
+            .animation(.easeOut(duration: 0.08), value: model.level)
+        }
+    }
+
+    private func dotScale(for index: Int) -> CGFloat {
+        let clamped = CGFloat(min(max(model.level, 0), 1))
+        let eased = pow(clamped, 0.9)
+        let baseScale: CGFloat = 0.42
+        let dynamicRange: CGFloat = 0.56
+        let multipliers: [CGFloat] = [0.82, 1.12, 0.94]
+        return baseScale + (dynamicRange * eased * multipliers[index])
+    }
+
+    private func dotOpacity(for index: Int) -> Double {
+        let clamped = Double(min(max(model.level, 0), 1))
+        let base: [Double] = [0.58, 0.66, 0.62]
+        let dynamic = 0.26 * clamped
+        return min(0.98, base[index] + dynamic)
     }
 }

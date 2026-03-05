@@ -12,6 +12,8 @@ protocol RecordingHUDControlling: AnyObject {
 
 @MainActor
 final class RecordingHUDWindowController: RecordingHUDControlling {
+    private let fixedPanelSize = NSSize(width: 93, height: 42)
+
     private final class HUDPanel: NSPanel {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
@@ -24,7 +26,7 @@ final class RecordingHUDWindowController: RecordingHUDControlling {
     private let model = RecordingHUDModel()
     private var mode: RecordingHUDMode = .recording
     private lazy var panel: NSPanel = {
-        let size = panelSize(for: .recording)
+        let size = fixedPanelSize
         let panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -70,6 +72,7 @@ final class RecordingHUDWindowController: RecordingHUDControlling {
 
     func update(level: Float) {
         let clamped = min(max(level, 0), 1)
+        model.level = clamped
         model.bands = Array(repeating: clamped, count: RecordingHUDModel.waveformSampleCount)
     }
 
@@ -78,15 +81,20 @@ final class RecordingHUDWindowController: RecordingHUDControlling {
             return
         }
 
+        let normalizedBands = bands.map { min(max($0, 0), 1) }
         if bands.count >= RecordingHUDModel.waveformSampleCount {
-            model.bands = Array(bands.suffix(RecordingHUDModel.waveformSampleCount)).map { min(max($0, 0), 1) }
+            model.bands = Array(normalizedBands.suffix(RecordingHUDModel.waveformSampleCount))
         } else {
-            let padded = bands + Array(
+            let padded = normalizedBands + Array(
                 repeating: RecordingHUDModel.waveformFloor,
                 count: RecordingHUDModel.waveformSampleCount - bands.count
             )
-            model.bands = padded.map { min(max($0, 0), 1) }
+            model.bands = padded
         }
+
+        let average = normalizedBands.reduce(0, +) / Float(normalizedBands.count)
+        let peak = normalizedBands.max() ?? average
+        model.level = (0.7 * peak) + (0.3 * average)
     }
 
     private func resizePanel(for mode: RecordingHUDMode) {
@@ -95,15 +103,8 @@ final class RecordingHUDWindowController: RecordingHUDControlling {
         positionPanel()
     }
 
-    private func panelSize(for mode: RecordingHUDMode) -> NSSize {
-        switch mode {
-        case .recording:
-            return NSSize(width: 500, height: 42)
-        case .transcribing:
-            return NSSize(width: 250, height: 40)
-        case .message:
-            return NSSize(width: 340, height: 40)
-        }
+    private func panelSize(for _: RecordingHUDMode) -> NSSize {
+        fixedPanelSize
     }
 
     private func positionPanel() {
