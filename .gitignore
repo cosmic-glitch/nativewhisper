@@ -7,3 +7,4 @@ Whisper Anywhere.app/
 .env.*
 !.env.example
 .vercel
+dist/

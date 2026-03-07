@@ -10,6 +10,7 @@ BUNDLE_ID="ai.whisperanywhere.app"
 MIN_MACOS_VERSION="14.0"
 ICON_SOURCE="$ROOT_DIR/WhisperAnywhere/Resources/AppIcon.icns"
 BUILD_DIR="$ROOT_DIR/.build/release"
+# Output directory for build artifacts (gitignored — do not commit dist/).
 DIST_DIR="$ROOT_DIR/dist"
 VOLUME_NAME="Whisper Anywhere"
 ENTITLEMENTS_PATH="$ROOT_DIR/scripts/whisperanywhere.entitlements"
