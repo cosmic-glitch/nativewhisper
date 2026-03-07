@@ -100,25 +100,63 @@ final class MenuBarControllerTests: XCTestCase {
             config: AppConfig(openAIKey: "", model: "gpt-4o-mini-transcribe", language: "en")
         )
 
-        XCTAssertEqual(controller.readinessStatus, .openAIKeyNotConfigured)
+        XCTAssertEqual(controller.readinessStatus, .signInRequired)
     }
 
-    func testSaveAPIKeyUpdatesReadiness() {
+    func testSignOutClearsReadiness() {
         let mocks = makeMocks(audioLevel: 0.2)
-        let apiKeyStore = MenuMockAPIKeyStore(initialValue: "")
+        let inMemoryProvider = InMemoryAPIKeyProvider()
+        inMemoryProvider.setAPIKey("sk-test")
         let controller = makeController(
             mocks: mocks,
             config: AppConfig(
-                keyProvider: { apiKeyStore.currentAPIKey() },
+                keyProvider: { inMemoryProvider.currentAPIKey() },
                 model: "gpt-4o-mini-transcribe",
                 language: "en"
             ),
-            apiKeyStore: apiKeyStore
+            inMemoryKeyProvider: inMemoryProvider
         )
 
-        XCTAssertEqual(controller.readinessStatus, .openAIKeyNotConfigured)
+        XCTAssertEqual(controller.readinessStatus, .ready)
 
-        controller.saveAPIKey("sk-test")
+        controller.signOut()
+        XCTAssertEqual(controller.readinessStatus, .signInRequired)
+        XCTAssertFalse(controller.isSignedIn)
+    }
+
+    func testRestoreSessionOnLaunchSetsAPIKey() async {
+        let mocks = makeMocks(audioLevel: 0.2)
+        let sessionStore = MenuMockSessionStore()
+        let session = AuthSession(
+            accessToken: "access",
+            refreshToken: "refresh",
+            expiresAt: Date().addingTimeInterval(3600),
+            userId: "u1",
+            email: "test@example.com"
+        )
+        try! sessionStore.saveSession(session)
+
+        let backendAuth = MenuMockBackendAuthClient()
+        backendAuth.apiKeyToReturn = "sk-from-backend"
+        let inMemoryProvider = InMemoryAPIKeyProvider()
+
+        let controller = makeController(
+            mocks: mocks,
+            config: AppConfig(
+                keyProvider: { inMemoryProvider.currentAPIKey() },
+                model: "gpt-4o-mini-transcribe",
+                language: "en"
+            ),
+            inMemoryKeyProvider: inMemoryProvider,
+            sessionStore: sessionStore,
+            backendAuthClient: backendAuth
+        )
+
+        await controller.restoreSessionOnLaunch()
+
+        XCTAssertTrue(controller.isSignedIn)
+        XCTAssertEqual(controller.signedInEmail, "test@example.com")
+        XCTAssertEqual(inMemoryProvider.currentAPIKey(), "sk-from-backend")
         XCTAssertEqual(controller.readinessStatus, .ready)
     }
 
@@ -260,14 +298,26 @@ final class MenuBarControllerTests: XCTestCase {
     private func makeController(
         mocks: ControllerMocks,
         config: AppConfig = AppConfig(openAIKey: "test", model: "gpt-4o-mini-transcribe", language: "en"),
-        apiKeyStore: APIKeyStoring = MenuMockAPIKeyStore(initialValue: "test"),
+        inMemoryKeyProvider: InMemoryAPIKeyProvider? = nil,
+        sessionStore: SessionStoring = MenuMockSessionStore(),
+        backendAuthClient: BackendAuthenticating = MenuMockBackendAuthClient(),
         configurationPresenter: ConfigurationPresenting = MenuMockConfigurationPresenter(),
         appDefaults: UserDefaults = .standard,
         initialMicrophonePromptAttemptKey: String = "WhisperAnywhere.DidAttemptInitialMicrophonePrompt"
     ) -> MenuBarController {
-        MenuBarController(
+        let provider = inMemoryKeyProvider ?? {
+            let p = InMemoryAPIKeyProvider()
+            if !config.openAIKey.isEmpty {
+                p.setAPIKey(config.openAIKey)
+            }
+            return p
+        }()
+
+        return MenuBarController(
             config: config,
-            apiKeyStore: apiKeyStore,
+            inMemoryKeyProvider: provider,
+            sessionStore: sessionStore,
+            backendAuthClient: backendAuthClient,
             configurationPresenter: configurationPresenter,
             appDefaults: appDefaults,
             initialMicrophonePromptAttemptKey: initialMicrophonePromptAttemptKey,
@@ -403,24 +453,59 @@ private final class MenuMockClipboard: ClipboardWriting, @unchecked Sendable {
     func copy(_ text: String) {}
 }
 
-private final class MenuMockAPIKeyStore: APIKeyStoring, @unchecked Sendable {
+private final class MenuMockSessionStore: SessionStoring, @unchecked Sendable {
     private let lock = NSLock()
-    private var value: String
+    private var session: AuthSession?
 
-    init(initialValue: String) {
-        self.value = initialValue
-    }
-
-    func currentAPIKey() -> String {
+    func loadSession() -> AuthSession? {
         lock.lock()
         defer { lock.unlock() }
-        return value
+        return session
     }
 
-    func saveAPIKey(_ value: String) {
+    func saveSession(_ session: AuthSession) throws {
         lock.lock()
-        self.value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.session = session
         lock.unlock()
+    }
+
+    func clearSession() throws {
+        lock.lock()
+        session = nil
+        lock.unlock()
+    }
+}
+
+private final class MenuMockBackendAuthClient: BackendAuthenticating, @unchecked Sendable {
+    var apiKeyToReturn = "sk-mock-key"
+    var sessionToReturn: AuthSession?
+
+    func beginGoogleSignIn(deviceID: String, appVersion: String) async throws -> URL {
+        URL(string: "https://example.com/oauth")!
+    }
+
+    func completeGoogleSignIn(oauthTokens: GoogleOAuthTokens, deviceID: String) async throws -> AuthSession {
+        sessionToReturn ?? AuthSession(
+            accessToken: oauthTokens.accessToken,
+            refreshToken: oauthTokens.refreshToken,
+            expiresAt: Date().addingTimeInterval(3600),
+            userId: "u1",
+            email: "test@example.com"
+        )
+    }
+
+    func refreshSession(refreshToken: String) async throws -> AuthSession {
+        sessionToReturn ?? AuthSession(
+            accessToken: "refreshed-access",
+            refreshToken: refreshToken,
+            expiresAt: Date().addingTimeInterval(3600),
+            userId: "u1",
+            email: "test@example.com"
+        )
+    }
+
+    func fetchAPIKey(accessToken: String) async throws -> String {
+        apiKeyToReturn
     }
 }
 

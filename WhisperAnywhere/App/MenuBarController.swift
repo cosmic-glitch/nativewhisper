@@ -12,7 +12,7 @@ enum SettingsPane {
 enum AppReadinessStatus {
     case ready
     case notEnoughPermissions
-    case openAIKeyNotConfigured
+    case signInRequired
 
     var label: String {
         switch self {
@@ -20,8 +20,8 @@ enum AppReadinessStatus {
             return "Ready"
         case .notEnoughPermissions:
             return "Not enough permissions"
-        case .openAIKeyNotConfigured:
-            return "OpenAI key not configured"
+        case .signInRequired:
+            return "Sign-in required"
         }
     }
 }
@@ -54,6 +54,9 @@ final class MenuBarController: ObservableObject {
     @Published private(set) var apiKeyConfigured: Bool
     @Published private(set) var authStatusMessage: String?
     @Published private(set) var isPreparingInitialMicrophonePrompt = false
+    @Published private(set) var isSignedIn = false
+    @Published private(set) var signedInEmail: String?
+    @Published private(set) var isSigningIn = false
 
     private let permissionService: PermissionProviding
     private let notifier: Notifying
@@ -61,7 +64,6 @@ final class MenuBarController: ObservableObject {
     private let chimeService: Chiming
     private let hudController: RecordingHUDControlling
     private let audioCapture: AudioCapturing
-    private let apiKeyStore: APIKeyStoring
     private let configurationPresenter: ConfigurationPresenting
     private let appDefaults: UserDefaults
     private let firstLaunchConfigurationKey: String
@@ -72,6 +74,11 @@ final class MenuBarController: ObservableObject {
     private let eventSink: DictationEventSink
     private let coordinator: DictationCoordinator
 
+    let sessionStore: SessionStoring
+    let inMemoryKeyProvider: InMemoryAPIKeyProvider
+    let backendAuthClient: BackendAuthenticating
+    let googleSignInService: GoogleSignInProviding
+
     private var meterTask: Task<Void, Never>?
     private var hudMessageTask: Task<Void, Never>?
     private var smoothedLevel: Float = 0.08
@@ -81,7 +88,10 @@ final class MenuBarController: ObservableObject {
 
     init(
         config: AppConfig? = nil,
-        apiKeyStore: APIKeyStoring = APIKeyStore.shared,
+        inMemoryKeyProvider: InMemoryAPIKeyProvider = .shared,
+        sessionStore: SessionStoring = KeychainSessionStore.shared,
+        backendAuthClient: BackendAuthenticating = BackendAuthClient(),
+        googleSignInService: GoogleSignInProviding? = nil,
         configurationPresenter: ConfigurationPresenting = ConfigurationWindowController(),
         appDefaults: UserDefaults = .standard,
         firstLaunchConfigurationKey: String = "WhisperAnywhere.DidShowConfigurationOnFirstLaunch",
@@ -100,10 +110,13 @@ final class MenuBarController: ObservableObject {
         hudController: RecordingHUDControlling = RecordingHUDWindowController(),
         autoStart: Bool = true
     ) {
-        let resolvedConfig = config ?? AppConfig.load(apiKeyStore: apiKeyStore)
+        let resolvedConfig = config ?? AppConfig.load(apiKeyStore: inMemoryKeyProvider)
 
         self.config = resolvedConfig
-        self.apiKeyStore = apiKeyStore
+        self.inMemoryKeyProvider = inMemoryKeyProvider
+        self.sessionStore = sessionStore
+        self.backendAuthClient = backendAuthClient
+        self.googleSignInService = googleSignInService ?? GoogleSignInService(callbackURL: URL(string: "whisperanywhere://auth/callback")!)
         self.configurationPresenter = configurationPresenter
         self.appDefaults = appDefaults
         self.firstLaunchConfigurationKey = firstLaunchConfigurationKey
@@ -162,7 +175,7 @@ final class MenuBarController: ObservableObject {
 
     var readinessStatus: AppReadinessStatus {
         if !apiKeyConfigured {
-            return .openAIKeyNotConfigured
+            return .signInRequired
         }
 
         guard hasRequiredPermissions else {
@@ -201,6 +214,7 @@ final class MenuBarController: ObservableObject {
 
         Task { @MainActor in
             await notifier.requestAuthorizationIfNeeded()
+            await restoreSessionOnLaunch()
         }
 
         refreshPermissions()
@@ -269,13 +283,65 @@ final class MenuBarController: ObservableObject {
         configurationPresenter.dismiss()
     }
 
-    func currentAPIKey() -> String {
-        config.openAIKey
+    func signInWithGoogle() {
+        guard !isSigningIn else { return }
+        isSigningIn = true
+        authStatusMessage = nil
+
+        Task { @MainActor in
+            defer { isSigningIn = false }
+            do {
+                let deviceID = DeviceIdentityStore.shared.deviceID()
+                let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+                let startURL = try await backendAuthClient.beginGoogleSignIn(deviceID: deviceID, appVersion: appVersion)
+                let tokens = try await googleSignInService.authenticate(startURL: startURL)
+                let session = try await backendAuthClient.completeGoogleSignIn(oauthTokens: tokens, deviceID: deviceID)
+                try sessionStore.saveSession(session)
+
+                let apiKey = try await backendAuthClient.fetchAPIKey(accessToken: session.accessToken)
+                inMemoryKeyProvider.setAPIKey(apiKey)
+
+                isSignedIn = true
+                signedInEmail = session.email
+                syncAPIKeyStatus()
+            } catch let error as GoogleSignInError where error == .cancelled {
+                authStatusMessage = nil
+            } catch {
+                authStatusMessage = error.localizedDescription
+            }
+        }
     }
 
-    func saveAPIKey(_ value: String) {
-        apiKeyStore.saveAPIKey(value)
+    func signOut() {
+        try? sessionStore.clearSession()
+        inMemoryKeyProvider.clearAPIKey()
+        isSignedIn = false
+        signedInEmail = nil
+        authStatusMessage = nil
         syncAPIKeyStatus()
+    }
+
+    func restoreSessionOnLaunch() async {
+        guard let session = sessionStore.loadSession() else { return }
+
+        do {
+            let activeSession: AuthSession
+            if session.isExpired {
+                activeSession = try await backendAuthClient.refreshSession(refreshToken: session.refreshToken)
+                try sessionStore.saveSession(activeSession)
+            } else {
+                activeSession = session
+            }
+
+            let apiKey = try await backendAuthClient.fetchAPIKey(accessToken: activeSession.accessToken)
+            inMemoryKeyProvider.setAPIKey(apiKey)
+
+            isSignedIn = true
+            signedInEmail = activeSession.email
+            syncAPIKeyStatus()
+        } catch {
+            authStatusMessage = "Session restore failed: \(error.localizedDescription)"
+        }
     }
 
     func permissionLabel(for state: PermissionState) -> String {
@@ -410,7 +476,7 @@ final class MenuBarController: ObservableObject {
 
     private func canStartDictationFromCurrentState() -> Bool {
         if config.openAIKey.isEmpty {
-            notifier.notify(title: "Whisper Anywhere", body: "OpenAI key is not configured. Open Configure.")
+            notifier.notify(title: "Whisper Anywhere", body: "Sign in with Google to start dictating.")
             return false
         }
         return true

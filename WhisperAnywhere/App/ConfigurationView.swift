@@ -3,9 +3,6 @@ import SwiftUI
 struct ConfigurationView: View {
     @ObservedObject var controller: MenuBarController
 
-    @State private var apiKeyDraft: String = ""
-    @State private var saveMessage: String?
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -13,9 +10,9 @@ struct ConfigurationView: View {
 
                 setupStep(
                     number: 1,
-                    title: "Set API key",
+                    title: "Sign in",
                     state: accountStepDone ? .done : .actionNeeded,
-                    detail: accountStepDone ? "API key saved" : "Enter your OpenAI API key",
+                    detail: accountStepDone ? "Signed in" : "Sign in with Google to continue",
                     content: {
                         accountStepContent
                     }
@@ -40,8 +37,6 @@ struct ConfigurationView: View {
         .frame(minWidth: 660, minHeight: 620)
         .onAppear {
             controller.refreshPermissions()
-            apiKeyDraft = controller.currentAPIKey()
-            saveMessage = nil
             Task {
                 await controller.prepareMicrophonePermissionOnSetupOpenIfNeeded()
             }
@@ -61,34 +56,47 @@ struct ConfigurationView: View {
 
     private var accountStepContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Step 1: Enter your OpenAI API key")
-                .font(.system(size: 12, weight: .medium))
+            if controller.isSignedIn {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
 
-            SecureField("sk-...", text: $apiKeyDraft)
-                .textFieldStyle(.roundedBorder)
-
-            HStack(spacing: 8) {
-                Button("Save API key") {
-                    controller.saveAPIKey(apiKeyDraft)
-                    saveMessage = "API key saved on this Mac."
+                    if let email = controller.signedInEmail {
+                        Text("Signed in as \(email)")
+                            .font(.system(size: 12, weight: .medium))
+                    } else {
+                        Text("Signed in")
+                            .font(.system(size: 12, weight: .medium))
+                    }
                 }
 
-                if let saveMessage {
-                    Text(saveMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                Button("Sign Out") {
+                    controller.signOut()
+                }
+            } else {
+                Text("Step 1: Sign in with your Google account")
+                    .font(.system(size: 12, weight: .medium))
+
+                if controller.isSigningIn {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Signing in...")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Button("Continue with Google") {
+                        controller.signInWithGoogle()
+                    }
                 }
             }
-
-            Text("Key status: \(controller.apiKeyConfigured ? "Configured" : "Not configured")")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
 
             if let message = controller.authStatusMessage,
                !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(message)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
             }
         }
     }
@@ -201,8 +209,8 @@ struct ConfigurationView: View {
             return "Everything is ready."
         case .notEnoughPermissions:
             return "Finish permissions in Step 2."
-        case .openAIKeyNotConfigured:
-            return "Add your OpenAI API key in Step 1."
+        case .signInRequired:
+            return "Sign in with Google in Step 1."
         }
     }
 
