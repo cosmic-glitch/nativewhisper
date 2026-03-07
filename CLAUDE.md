@@ -2,14 +2,6 @@
 
 macOS menu bar app for system-wide dictation using OpenAI Whisper. Built with Swift Package Manager.
 
-## Build & Test
-
-```bash
-swift build              # Debug build
-swift build -c release   # Release build
-swift test               # Run all tests
-```
-
 ## Release
 
 ### Mandatory Release Rule
@@ -27,6 +19,10 @@ When asked to "rebuild" or "release", treat it as a full signed release:
 
 1. Run `./scripts/release_dmg.sh` (uses Developer ID identity and notary profile defaulted in the script; override with `--identity`/`DEVELOPER_IDENTITY` or `--notary-profile`/`NOTARY_PROFILE`).
 2. Pass explicit `--version` and `--build-number` when available, otherwise let them auto-detect from git tags/date.
+
+### Versioning
+
+Current series: **1.3.x**. Auto-increment patch for each release (1.3.0, 1.3.1, 1.3.2, …). Do not bump to 1.4.x unless explicitly asked. Check `website/downloads/` for the latest released version to determine the next patch number.
 3. Do **not** use `--skip-notarize` unless explicitly requested.
 4. Ensure both artifacts are produced in `dist/`:
    - `Whisper-Anywhere-<version>.dmg` (signed + notarized + stapled)
@@ -38,17 +34,3 @@ When asked to "rebuild" or "release", treat it as a full signed release:
 - Only one DMG path was updated
 - DMG hashes do not match
 
-### Scripts
-
-- `scripts/release_dmg.sh` — Builds a **signed + notarized** DMG for production distribution. The real release script.
-- `scripts/full_release.sh` — Runs tests, builds an **unsigned** DMG, copies it to `website/downloads/`. Used for CI/website deploy.
-- `scripts/build_unsigned_dmg.sh` — Builds an ad-hoc signed DMG (no Developer ID). Called by `full_release.sh`.
-- `scripts/install_app.sh` — Local install helper.
-
-## Project Structure
-
-- `WhisperAnywhere/` — Main app source (Swift)
-- `Tests/WhisperAnywhereTests/` — Test suite
-- `website/` — Project website, downloads served from `website/downloads/`
-- `dist/` — Build output directory (gitignored)
-- `Package.swift` — SPM manifest

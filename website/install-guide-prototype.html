@@ -1,0 +1,654 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Whisper Anywhere — Get Started</title>
+  <meta name="description" content="Install Whisper Anywhere on your Mac and start dictating in under 2 minutes." />
+  <link rel="icon" href="./assets/whisper-anywhere-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #fafaf9;
+      --bg-alt: #f3f3f0;
+      --surface: #ffffff;
+      --border: #e5e5e3;
+      --border-focus: #c4c4c0;
+      --text: #1a1a19;
+      --text-secondary: #6b6b68;
+      --text-tertiary: #9a9a96;
+      --accent: #2563eb;
+      --accent-soft: #eff4ff;
+      --accent-border: #bfdbfe;
+      --green: #16a34a;
+      --green-soft: #f0fdf4;
+      --green-border: #bbf7d0;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --amber-border: #fde68a;
+      --radius: 12px;
+      --radius-lg: 16px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+      --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+
+    body {
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: "Inter", -apple-system, system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ── Navigation ── */
+    .nav {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(250, 250, 249, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 920px; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 56px;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: 10px;
+      text-decoration: none; color: var(--text); font-weight: 600; font-size: 15px;
+    }
+    .nav-brand img { width: 28px; height: 28px; border-radius: 7px; }
+    .nav-links { display: flex; gap: 4px; }
+    .nav-links a {
+      text-decoration: none; color: var(--text-secondary);
+      font-size: 14px; font-weight: 500; padding: 6px 12px;
+      border-radius: 8px; transition: all 150ms;
+    }
+    .nav-links a:hover { color: var(--text); background: var(--bg-alt); }
+
+    /* ── Page container ── */
+    .page { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Hero: compact intro ── */
+    .hero {
+      padding: 48px 0 32px;
+      display: flex; align-items: flex-start; gap: 32px;
+    }
+    .hero-text { flex: 1; }
+    .hero h1 {
+      font-size: 28px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2;
+      margin-bottom: 8px;
+    }
+    .hero .subtitle {
+      color: var(--text-secondary); font-size: 16px; max-width: 50ch;
+      margin-bottom: 16px;
+    }
+    .hero-cta {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+      padding: 10px 20px; border-radius: 10px; text-decoration: none;
+      box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+      transition: all 150ms;
+    }
+    .hero-cta:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .hero-cta svg { width: 16px; height: 16px; }
+    .hero-meta {
+      margin-top: 10px; font-size: 13px; color: var(--text-tertiary);
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 20px;
+      padding: 16px 24px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      flex-shrink: 0;
+    }
+    .hero-badge-item {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      text-align: center;
+    }
+    .hero-badge-item .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-tertiary); font-weight: 600; }
+    .hero-badge-item .value { font-size: 14px; font-weight: 600; color: var(--text); }
+
+    /* ── Divider ── */
+    .divider {
+      height: 1px; background: var(--border); margin: 0;
+    }
+
+    /* ── Section headings ── */
+    .section-header {
+      padding: 40px 0 20px;
+    }
+    .section-header .overline {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--accent); margin-bottom: 6px;
+    }
+    .section-header h2 {
+      font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+    }
+    .section-header p {
+      color: var(--text-secondary); margin-top: 4px; max-width: 60ch;
+    }
+
+    /* ── Step cards ── */
+    .steps { display: grid; gap: 16px; padding-bottom: 8px; }
+
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .step-top {
+      display: flex; align-items: flex-start; gap: 16px;
+      padding: 24px 24px 0;
+    }
+
+    .step-num {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 14px;
+      flex-shrink: 0; margin-top: 2px;
+    }
+
+    .step-body { flex: 1; }
+    .step-body h3 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .step-body p { color: var(--text-secondary); font-size: 14px; }
+    .step-body ol, .step-body ul { color: var(--text-secondary); padding-left: 18px; margin: 8px 0 0; font-size: 14px; }
+    .step-body li + li { margin-top: 4px; }
+    .step-body li strong { color: var(--text); font-weight: 600; }
+
+    .step-screenshot {
+      margin: 20px 24px 24px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-alt);
+      overflow: hidden;
+    }
+    .step-screenshot img {
+      display: block; width: 100%; height: auto;
+    }
+    .step-screenshot-placeholder {
+      display: flex; align-items: center; justify-content: center;
+      padding: 48px 16px;
+      color: var(--text-tertiary); font-size: 13px; font-style: italic;
+    }
+
+    /* ── Callout ── */
+    .callout {
+      margin: 12px 0 0;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .callout-info {
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-border);
+      color: #1e40af;
+    }
+    .callout-success {
+      background: var(--green-soft);
+      border: 1px solid var(--green-border);
+      color: #15803d;
+    }
+    .callout-warn {
+      background: var(--amber-soft);
+      border: 1px solid var(--amber-border);
+      color: #92400e;
+    }
+    .callout strong { font-weight: 600; }
+
+    /* ── Permission badges ── */
+    .permissions-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      margin: 14px 0 4px;
+    }
+    .perm {
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+    }
+    .perm-icon { font-size: 20px; margin-bottom: 6px; }
+    .perm h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .perm p { font-size: 12px; color: var(--text-secondary); }
+    .perm-path {
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
+      font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-tertiary);
+    }
+
+    /* ── Code/kbd ── */
+    code {
+      font-family: "JetBrains Mono", monospace; font-size: 0.9em;
+      background: var(--bg-alt); border: 1px solid var(--border);
+      padding: 1px 6px; border-radius: 5px;
+    }
+    kbd {
+      font-family: "JetBrains Mono", monospace; font-size: 0.88em;
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 28px; padding: 2px 8px;
+      background: var(--surface); border: 1px solid var(--border-focus);
+      border-radius: 6px; font-weight: 600;
+      box-shadow: 0 1px 0 var(--border);
+    }
+
+    /* ── How it works (compact) ── */
+    .usage-flow {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+      background: var(--border); border-radius: var(--radius-lg); overflow: hidden;
+      margin: 8px 0 0;
+    }
+    .usage-step {
+      background: var(--surface); padding: 20px 16px; text-align: center;
+    }
+    .usage-step .num {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--bg-alt); color: var(--text-secondary);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700; margin-bottom: 8px;
+    }
+    .usage-step h4 { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+    .usage-step p { font-size: 12px; color: var(--text-secondary); }
+
+    /* ── Features (minimal) ── */
+    .features-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+      margin-top: 8px;
+    }
+    .feature {
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .feature h3 { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+    .feature p { font-size: 13px; color: var(--text-secondary); }
+
+    /* ── Troubleshooting ── */
+    .faq-list { display: grid; gap: 8px; margin-top: 8px; }
+    details {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+    }
+    summary {
+      cursor: pointer; font-weight: 600; font-size: 14px;
+      padding: 14px 18px;
+      list-style: none;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    summary::-webkit-details-marker { display: none; }
+    summary::after {
+      content: "+"; font-size: 18px; font-weight: 400; color: var(--text-tertiary);
+      transition: transform 200ms;
+    }
+    details[open] summary::after { content: "-"; }
+    details .answer {
+      padding: 0 18px 16px;
+      color: var(--text-secondary); font-size: 14px;
+    }
+    details .answer a { color: var(--accent); }
+
+    /* ── Bottom CTA ── */
+    .bottom-cta {
+      margin: 48px 0;
+      padding: 32px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      text-align: center;
+    }
+    .bottom-cta h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    .bottom-cta p { color: var(--text-secondary); font-size: 14px; margin-bottom: 16px; }
+    .bottom-cta .hero-meta { margin-top: 10px; }
+
+    /* ── Footer ── */
+    .footer {
+      border-top: 1px solid var(--border);
+      padding: 20px 0;
+    }
+    .footer-inner {
+      max-width: 920px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px; color: var(--text-tertiary);
+    }
+    .footer a { color: var(--text-secondary); text-decoration: none; }
+    .footer a:hover { color: var(--accent); }
+
+    /* ── Responsive ── */
+    @media (max-width: 700px) {
+      .hero { flex-direction: column; }
+      .hero-badge { align-self: stretch; justify-content: center; }
+      .permissions-row { grid-template-columns: 1fr; }
+      .usage-flow { grid-template-columns: 1fr 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+      .footer-inner { flex-direction: column; gap: 8px; text-align: center; }
+    }
+
+    @media (max-width: 480px) {
+      .nav-links a { padding: 6px 8px; font-size: 13px; }
+      .usage-flow { grid-template-columns: 1fr; }
+      .hero-badge { flex-direction: column; gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#top">
+        <img src="./assets/whisper-anywhere-icon.png" alt="" />
+        Whisper Anywhere
+      </a>
+      <nav class="nav-links">
+        <a href="#install">Install</a>
+        <a href="#permissions">Permissions</a>
+        <a href="#usage">Usage</a>
+        <a href="#troubleshooting">Help</a>
+        <a href="https://github.com/cosmic-glitch/whisper-anywhere" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <div class="page" id="top">
+
+    <!-- ── Hero: brief value prop + download ── -->
+    <section class="hero">
+      <div class="hero-text">
+        <h1>Voice-to-text for every Mac app.</h1>
+        <p class="subtitle">
+          Hold <kbd>Fn</kbd>, speak, release. Your words appear at the cursor &mdash; in any app, any text field. Powered by OpenAI Whisper.
+        </p>
+        <a class="hero-cta" href="./downloads/Whisper-Anywhere-1.3.0.dmg" download>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v9M4 8l4 4 4-4M2 14h12"/></svg>
+          Download for Mac
+        </a>
+        <p class="hero-meta">v1.3.0 &middot; macOS 14+ &middot; Signed &amp; notarized &middot; Free &amp; open source</p>
+      </div>
+      <div class="hero-badge">
+        <div class="hero-badge-item">
+          <span class="label">Trigger</span>
+          <span class="value"><kbd>Fn</kbd> hold</span>
+        </div>
+        <div class="hero-badge-item">
+          <span class="label">Engine</span>
+          <span class="value">OpenAI Whisper</span>
+        </div>
+        <div class="hero-badge-item">
+          <span class="label">Setup</span>
+          <span class="value">~2 min</span>
+        </div>
+      </div>
+    </section>
+
+    <hr class="divider" />
+
+    <!-- ── Step 1: Install ── -->
+    <div class="section-header" id="install">
+      <p class="overline">Step 1 of 4</p>
+      <h2>Download and install</h2>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-top">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <h3>Install the app</h3>
+            <ol>
+              <li>Download the <strong>.dmg</strong> file using the button above.</li>
+              <li>Open the downloaded file.</li>
+              <li>Drag <strong>Whisper Anywhere</strong> into your <strong>Applications</strong> folder.</li>
+              <li>Launch it from Applications. The app appears in your <strong>menu bar</strong> (top-right of your screen).</li>
+            </ol>
+            <div class="callout callout-info">
+              <strong>First launch:</strong> A configuration window opens automatically. Follow the next steps to complete setup.
+            </div>
+          </div>
+        </div>
+        <div class="step-screenshot">
+          <div class="step-screenshot-placeholder">Screenshot: DMG install window &mdash; drag app to Applications</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" style="margin-top: 32px;" />
+
+    <!-- ── Step 2: API Key ── -->
+    <div class="section-header">
+      <p class="overline">Step 2 of 4</p>
+      <h2>Enter your OpenAI API key</h2>
+      <p>Whisper Anywhere uses your own OpenAI API key. Your audio goes directly from your Mac to OpenAI &mdash; nothing is stored or routed through third parties.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-top">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <h3>Paste your API key</h3>
+            <ol>
+              <li>Go to <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color: var(--accent);">platform.openai.com/api-keys</a> and create a key (or copy an existing one).</li>
+              <li>In the Whisper Anywhere configuration window, paste the key and save.</li>
+            </ol>
+            <div class="callout callout-info">
+              <strong>Alternative:</strong> You can also set the <code>OPENAI_API_KEY</code> environment variable instead.
+            </div>
+          </div>
+        </div>
+        <div class="step-screenshot">
+          <div class="step-screenshot-placeholder">Screenshot: Configuration window with the API key field</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" style="margin-top: 32px;" />
+
+    <!-- ── Step 3: Permissions ── -->
+    <div class="section-header" id="permissions">
+      <p class="overline">Step 3 of 4</p>
+      <h2>Grant macOS permissions</h2>
+      <p>Whisper Anywhere needs three permissions to record audio, detect the Fn key, and insert text. You only need to do this once.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-top">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <h3>Enable all three permissions</h3>
+            <p>macOS will prompt you for Microphone access. For Accessibility and Input Monitoring, click the buttons in the configuration window to open System Settings, then toggle Whisper Anywhere on.</p>
+
+            <div class="permissions-row">
+              <div class="perm">
+                <div class="perm-icon">&#127908;</div>
+                <h4>Microphone</h4>
+                <p>Captures your voice for transcription.</p>
+                <div class="perm-path">Privacy &rarr; Microphone</div>
+              </div>
+              <div class="perm">
+                <div class="perm-icon">&#9878;</div>
+                <h4>Accessibility</h4>
+                <p>Inserts transcribed text into the active app.</p>
+                <div class="perm-path">Privacy &rarr; Accessibility</div>
+              </div>
+              <div class="perm">
+                <div class="perm-icon">&#9000;</div>
+                <h4>Input Monitoring</h4>
+                <p>Detects Fn key press and release.</p>
+                <div class="perm-path">Privacy &rarr; Input Monitoring</div>
+              </div>
+            </div>
+
+            <div class="callout callout-warn">
+              <strong>Denied a permission by accident?</strong> Open <strong>System Settings &rarr; Privacy &amp; Security</strong>, find the relevant section, and toggle Whisper Anywhere on.
+            </div>
+          </div>
+        </div>
+        <div class="step-screenshot">
+          <div class="step-screenshot-placeholder">Screenshot: macOS System Settings showing permissions granted</div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider" style="margin-top: 32px;" />
+
+    <!-- ── Step 4: Start dictating ── -->
+    <div class="section-header" id="usage">
+      <p class="overline">Step 4 of 4</p>
+      <h2>Start dictating</h2>
+      <p>Setup is done. Here's how to use it every day.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-top">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <h3>Hold Fn, speak, release</h3>
+            <ol>
+              <li>Click into any text field in any app.</li>
+              <li>Press and hold <kbd>Fn</kbd> &mdash; a recording indicator appears.</li>
+              <li>Speak naturally.</li>
+              <li>Release <kbd>Fn</kbd> &mdash; your words are transcribed and inserted at the cursor.</li>
+            </ol>
+            <div class="callout callout-success">
+              <strong>No active cursor?</strong> The transcript is automatically copied to your clipboard so you can paste it wherever you need.
+            </div>
+          </div>
+        </div>
+        <div class="step-screenshot">
+          <div class="step-screenshot-placeholder">Screenshot: Recording HUD waveform visible while dictating</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── How it works flow ── -->
+    <div class="usage-flow">
+      <div class="usage-step">
+        <div class="num">1</div>
+        <h4>Click a text field</h4>
+        <p>Any app, any field</p>
+      </div>
+      <div class="usage-step">
+        <div class="num">2</div>
+        <h4>Hold <kbd>Fn</kbd></h4>
+        <p>Recording starts</p>
+      </div>
+      <div class="usage-step">
+        <div class="num">3</div>
+        <h4>Speak</h4>
+        <p>Say what you want to type</p>
+      </div>
+      <div class="usage-step">
+        <div class="num">4</div>
+        <h4>Release <kbd>Fn</kbd></h4>
+        <p>Text appears at cursor</p>
+      </div>
+    </div>
+
+    <hr class="divider" style="margin-top: 40px;" />
+
+    <!-- ── Features (compact, not dominating) ── -->
+    <div class="section-header">
+      <p class="overline">What you get</p>
+      <h2>Key features</h2>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature">
+        <h3>Works in every app</h3>
+        <p>Docs, Slack, email, browsers, terminal &mdash; anywhere you can type on macOS.</p>
+      </div>
+      <div class="feature">
+        <h3>Edit commands</h3>
+        <p>Select text, hold Fn, and speak an edit instruction to rewrite it with AI.</p>
+      </div>
+      <div class="feature">
+        <h3>Privacy-first</h3>
+        <p>No stored audio or transcripts. Direct connection from your Mac to OpenAI.</p>
+      </div>
+      <div class="feature">
+        <h3>Clipboard fallback</h3>
+        <p>If there's no active cursor, your transcript is copied to clipboard automatically.</p>
+      </div>
+    </div>
+
+    <hr class="divider" style="margin-top: 40px;" />
+
+    <!-- ── Troubleshooting ── -->
+    <div class="section-header" id="troubleshooting">
+      <p class="overline">Troubleshooting</p>
+      <h2>Common issues</h2>
+    </div>
+
+    <div class="faq-list">
+      <details>
+        <summary>Nothing happens when I press Fn</summary>
+        <div class="answer">
+          <p>Check that <strong>Input Monitoring</strong> is enabled in System Settings &rarr; Privacy &amp; Security &rarr; Input Monitoring. You may need to toggle it off and on, then relaunch the app.</p>
+        </div>
+      </details>
+      <details>
+        <summary>Text doesn't appear in the active app</summary>
+        <div class="answer">
+          <p>Make sure <strong>Accessibility</strong> permission is granted. Some apps with custom text fields may not support direct insertion &mdash; in that case, the transcript is copied to your clipboard instead.</p>
+        </div>
+      </details>
+      <details>
+        <summary>I get an API error</summary>
+        <div class="answer">
+          <p>Verify your OpenAI API key is valid and has available credits at <a href="https://platform.openai.com/usage" target="_blank" rel="noopener">platform.openai.com/usage</a>.</p>
+        </div>
+      </details>
+      <details>
+        <summary>I can't find the app after launching it</summary>
+        <div class="answer">
+          <p>Whisper Anywhere is a menu bar app &mdash; it has no Dock icon. Look for the microphone icon in the top-right area of your screen. If your menu bar is crowded, it may be hidden behind the notch.</p>
+        </div>
+      </details>
+      <details>
+        <summary>How do I update the app?</summary>
+        <div class="answer">
+          <p>Download the latest DMG from this page or from <a href="https://github.com/cosmic-glitch/whisper-anywhere/releases" target="_blank" rel="noopener">GitHub Releases</a>, and replace the app in your Applications folder.</p>
+        </div>
+      </details>
+    </div>
+
+    <!-- ── Bottom CTA ── -->
+    <div class="bottom-cta">
+      <h2>Ready to start?</h2>
+      <p>Download Whisper Anywhere and set it up in under 2 minutes.</p>
+      <a class="hero-cta" href="./downloads/Whisper-Anywhere-1.3.0.dmg" download>
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2v9M4 8l4 4 4-4M2 14h12"/></svg>
+        Download for Mac
+      </a>
+      <p class="hero-meta">v1.3.0 &middot; macOS 14+ &middot; Signed &amp; notarized &middot; Free &amp; open source</p>
+    </div>
+
+  </div>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span>Whisper Anywhere</span>
+      <a href="https://github.com/cosmic-glitch/whisper-anywhere" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </footer>
+
+</body>
+</html>
