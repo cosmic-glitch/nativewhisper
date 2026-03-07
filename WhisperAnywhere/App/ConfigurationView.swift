@@ -3,38 +3,24 @@ import SwiftUI
 struct ConfigurationView: View {
     @ObservedObject var controller: MenuBarController
 
+    @State private var testText: String = ""
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                headerSection
-
-                setupStep(
-                    number: 1,
-                    title: "Sign in",
-                    state: accountStepDone ? .done : .actionNeeded,
-                    detail: accountStepDone ? "Signed in" : "Sign in with Google to continue",
-                    content: {
-                        accountStepContent
-                    }
-                )
-
-                setupStep(
-                    number: 2,
-                    title: "Grant permissions",
-                    state: permissionsStepDone ? .done : .actionNeeded,
-                    detail: permissionsStepDone ? "All required permissions granted" : "Grant all required permissions",
-                    content: {
-                        permissionsStepContent
-                    }
-                )
-
-                readinessGuidePanel
-                footerActions
-            }
-            .padding(18)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 16) {
+            headerSection
+            Divider()
+            accountSection
+            Divider()
+            permissionsSection
+            Divider()
+            tryItSection
+            Divider()
+            footerActions
         }
-        .frame(minWidth: 660, minHeight: 620)
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(minWidth: 520)
         .onAppear {
             controller.refreshPermissions()
             Task {
@@ -43,50 +29,52 @@ struct ConfigurationView: View {
         }
     }
 
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Setup Whisper Anywhere")
-                .font(.system(size: 22, weight: .semibold))
+    // MARK: - Header
 
-            Text("Hold Fn, speak, and release to dictate into your current text cursor.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-        }
+    private var headerSection: some View {
+        Text("Whisper Anywhere Configuration")
+            .font(.system(size: 20, weight: .semibold))
     }
 
-    private var accountStepContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    // MARK: - Account
+
+    private var accountSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Account")
+                .font(.system(size: 13, weight: .semibold))
+
             if controller.isSignedIn {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                        .font(.system(size: 12))
 
                     if let email = controller.signedInEmail {
-                        Text("Signed in as \(email)")
-                            .font(.system(size: 12, weight: .medium))
+                        Text(email)
+                            .font(.system(size: 12))
                     } else {
                         Text("Signed in")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 12))
                     }
-                }
 
-                Button("Sign Out") {
-                    controller.signOut()
+                    Spacer()
+
+                    Button("Sign Out") {
+                        controller.signOut()
+                    }
+                    .font(.system(size: 11))
                 }
             } else {
-                Text("Step 1: Sign in with your Google account")
-                    .font(.system(size: 12, weight: .medium))
-
                 if controller.isSigningIn {
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.small)
                         Text("Signing in...")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    Button("Continue with Google") {
+                    Button("Sign in with Google") {
                         controller.signInWithGoogle()
                     }
                 }
@@ -101,37 +89,62 @@ struct ConfigurationView: View {
         }
     }
 
-    private var permissionsStepContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            microphonePermissionRow
+    // MARK: - Permissions
 
-            permissionRow(
+    private var permissionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Permissions")
+                .font(.system(size: 13, weight: .semibold))
+
+            compactPermissionRow(
+                title: "Microphone",
+                state: controller.permissionSnapshot.microphone,
+                explanation: "Whisper Anywhere records your voice to transcribe it. macOS requires microphone permission for this.",
+                steps: microphoneSteps,
+                action: microphoneAction
+            )
+
+            compactPermissionRow(
                 title: "Accessibility",
                 state: controller.permissionSnapshot.accessibility,
-                route: "System Settings -> Privacy & Security -> Accessibility",
-                actionTitle: "Open Accessibility Settings",
-                action: {
+                explanation: "Whisper Anywhere types transcribed text into your active text field. macOS requires Accessibility permission for this.",
+                steps: [
+                    "Click \"Open Settings\" below",
+                    "Find \"Whisper Anywhere\" in the list",
+                    "Toggle it ON",
+                    "Come back here and click Refresh"
+                ],
+                action: ("Open Accessibility Settings", {
                     controller.openSystemSettings(.accessibility)
-                }
+                })
             )
 
-            permissionRow(
+            compactPermissionRow(
                 title: "Input Monitoring",
                 state: controller.permissionSnapshot.inputMonitoring,
-                route: "System Settings -> Privacy & Security -> Input Monitoring",
-                actionTitle: "Open Input Monitoring Settings",
-                action: {
+                explanation: "Whisper Anywhere listens for the Fn key to start and stop recording. macOS requires Input Monitoring permission for this.",
+                steps: [
+                    "Click \"Open Settings\" below",
+                    "Find \"Whisper Anywhere\" in the list",
+                    "Toggle it ON",
+                    "Come back here and click Refresh"
+                ],
+                action: ("Open Input Monitoring Settings", {
                     controller.openSystemSettings(.inputMonitoring)
-                }
+                })
             )
 
-            HStack(spacing: 8) {
-                Button("Request remaining permissions") {
-                    controller.testPermissions()
-                }
+            if hasAnyDeniedPermission {
+                HStack(spacing: 8) {
+                    Button("Request Permissions") {
+                        controller.testPermissions()
+                    }
+                    .font(.system(size: 11))
 
-                Button("Refresh") {
-                    controller.refreshPermissions()
+                    Button("Refresh") {
+                        controller.refreshPermissions()
+                    }
+                    .font(.system(size: 11))
                 }
             }
 
@@ -139,241 +152,184 @@ struct ConfigurationView: View {
                !monitorError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(monitorError)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.red)
             }
         }
     }
 
-    private var readinessGuidePanel: some View {
+    // MARK: - Try It
+
+    private var tryItSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Ready to dictate")
-                .font(.system(size: 15, weight: .semibold))
+            Text("Try it")
+                .font(.system(size: 13, weight: .semibold))
 
             if controller.readinessStatus == .ready {
-                Text("Everything is ready. Click Done, then hold Fn to dictate.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(readinessGuideMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("1. Click the text box below")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("2. Hold the Fn key and speak")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    Text("3. Release Fn \u{2014} your words appear in the box")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
 
-            Text("Current app status: \(controller.statusText)")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+                TextField("Your transcribed text will appear here", text: $testText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13))
+            } else {
+                Text(tryItBlockedMessage)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+
+                TextField("", text: .constant(""))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 13))
+                    .disabled(true)
+                    .opacity(0.4)
+            }
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.25))
-                )
-        )
     }
 
+    // MARK: - Footer
+
     private var footerActions: some View {
-        HStack(spacing: 8) {
-            if controller.readinessStatus != .ready {
-                Text("Complete Steps 1 and 2 to continue.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
+        VStack(spacing: 8) {
             Button("Done") {
                 controller.dismissConfiguration()
             }
             .keyboardShortcut(.defaultAction)
             .disabled(controller.readinessStatus != .ready)
-        }
-    }
+            .frame(maxWidth: .infinity, alignment: .center)
 
-    private var accountStepDone: Bool {
-        controller.apiKeyConfigured
-    }
+            HStack(spacing: 4) {
+                Text("Whisper Anywhere will keep running and appear as")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
 
-    private var permissionsStepDone: Bool {
-        controller.permissionSnapshot.microphone == .granted &&
-            controller.permissionSnapshot.accessibility == .granted &&
-            controller.permissionSnapshot.inputMonitoring == .granted &&
-            controller.monitorErrorMessage == nil
-    }
+                Image(systemName: MenuBarController.idleMenuIconName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
 
-    private var readinessGuideMessage: String {
-        switch controller.readinessStatus {
-        case .ready:
-            return "Everything is ready."
-        case .notEnoughPermissions:
-            return "Finish permissions in Step 2."
-        case .signInRequired:
-            return "Sign in with Google in Step 1."
-        }
-    }
-
-    @ViewBuilder
-    private func setupStep<Content: View>(
-        number: Int,
-        title: String,
-        state: SetupStepState,
-        detail: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(number)")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 20, height: 20)
-                    .background(Circle().fill(stepBadgeColor(for: state)))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 15, weight: .semibold))
-
-                    Text(detail)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text(state.label)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(stepBadgeColor(for: state))
+                Text("on the right side of the menu bar on top.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
-
-            content()
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(Color.secondary.opacity(0.22), lineWidth: 1)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(nsColor: .windowBackgroundColor).opacity(0.25))
-                )
-        )
     }
 
+    // MARK: - Permission Row
+
     @ViewBuilder
-    private func permissionRow(
+    private func compactPermissionRow(
         title: String,
         state: PermissionState,
-        route: String,
-        actionTitle: String,
-        action: @escaping () -> Void
+        explanation: String,
+        steps: [String],
+        action: (String, () -> Void)?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        if state == .granted {
             HStack(spacing: 6) {
-                Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(state == .granted ? .green : .orange)
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 12))
 
-                Text("\(title): \(permissionHeadline(for: state))")
-                    .font(.system(size: 12, weight: .medium))
+                Text(title)
+                    .font(.system(size: 12))
             }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.orange)
+                        .font(.system(size: 12))
 
-            if state != .granted {
-                Text("Open: \(route)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-
-                Button(actionTitle, action: action)
-                    .font(.system(size: 11))
-            } else {
-                Text("No action needed")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var microphonePermissionRow: some View {
-        let state = controller.permissionSnapshot.microphone
-
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
-                Image(systemName: state == .granted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                    .foregroundStyle(state == .granted ? .green : .orange)
-
-                Text("Microphone: \(permissionHeadline(for: state))")
-                    .font(.system(size: 12, weight: .medium))
-            }
-
-            switch state {
-            case .granted:
-                Text("No action needed")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            case .denied:
-                Text("Open: System Settings -> Privacy & Security -> Microphone")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-
-                Button("Open Microphone Settings") {
-                    controller.openSystemSettings(.microphone)
+                    Text("\(title) \u{2014} Not granted")
+                        .font(.system(size: 12, weight: .medium))
                 }
-                .font(.system(size: 11))
-            case .notDetermined:
-                Text(
-                    "We request microphone access automatically. The app appears in Microphone settings only after the first access request."
-                )
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
 
-                if controller.isPreparingInitialMicrophonePrompt {
-                    Text("Requesting access...")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Button("Allow Microphone Access") {
-                        Task {
-                            await controller.requestMicrophoneAccessFromConfiguration()
-                        }
+                Text(explanation)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
+                        Text("\(index + 1). \(step)")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
-                    .font(.system(size: 11))
+                }
+
+                if let (title, handler) = action {
+                    Button(title, action: handler)
+                        .font(.system(size: 11))
                 }
             }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.orange.opacity(0.06))
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func permissionHeadline(for state: PermissionState) -> String {
-        switch state {
-        case .granted:
-            return "Granted"
-        case .denied:
-            return "Needs action"
+    // MARK: - Helpers
+
+    private var microphoneSteps: [String] {
+        switch controller.permissionSnapshot.microphone {
         case .notDetermined:
-            return "Not set yet"
+            return [
+                "Click \"Allow Microphone Access\" below",
+                "Click \"Allow\" in the macOS prompt that appears"
+            ]
+        case .denied:
+            return [
+                "Click \"Open Settings\" below",
+                "Find \"Whisper Anywhere\" in the list",
+                "Toggle it ON",
+                "Come back here and click Refresh"
+            ]
+        case .granted:
+            return []
         }
     }
 
-    private func stepBadgeColor(for state: SetupStepState) -> Color {
-        switch state {
-        case .done:
-            return .green
-        case .actionNeeded:
-            return .orange
+    private var microphoneAction: (String, () -> Void)? {
+        switch controller.permissionSnapshot.microphone {
+        case .notDetermined:
+            return ("Allow Microphone Access", {
+                Task {
+                    await controller.requestMicrophoneAccessFromConfiguration()
+                }
+            })
+        case .denied:
+            return ("Open Microphone Settings", {
+                controller.openSystemSettings(.microphone)
+            })
+        case .granted:
+            return nil
         }
     }
-}
 
-private enum SetupStepState {
-    case done
-    case actionNeeded
+    private var hasAnyDeniedPermission: Bool {
+        controller.permissionSnapshot.microphone != .granted ||
+            controller.permissionSnapshot.accessibility != .granted ||
+            controller.permissionSnapshot.inputMonitoring != .granted
+    }
 
-    var label: String {
-        switch self {
-        case .done:
-            return "Done"
-        case .actionNeeded:
-            return "Action needed"
+    private var tryItBlockedMessage: String {
+        switch controller.readinessStatus {
+        case .ready:
+            return ""
+        case .signInRequired:
+            return "Sign in above to get started."
+        case .notEnoughPermissions:
+            return "Grant all permissions above to get started."
         }
     }
 }

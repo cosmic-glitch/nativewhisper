@@ -1,5 +1,4 @@
 import Foundation
-import Security
 
 protocol SessionStoring: Sendable {
     func loadSession() -> AuthSession?
@@ -10,7 +9,7 @@ protocol SessionStoring: Sendable {
 enum SessionStoreError: LocalizedError {
     case encodingFailed
     case decodingFailed
-    case unhandledStatus(OSStatus)
+    case writeFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -18,55 +17,39 @@ enum SessionStoreError: LocalizedError {
             return "Failed to encode auth session."
         case .decodingFailed:
             return "Failed to decode auth session."
-        case .unhandledStatus(let status):
-            return "Keychain operation failed with status: \(status)."
+        case .writeFailed(let detail):
+            return "Failed to write session file: \(detail)"
         }
     }
 }
 
-final class KeychainSessionStore: SessionStoring, @unchecked Sendable {
-    static let shared = KeychainSessionStore()
+final class FileSessionStore: SessionStoring, @unchecked Sendable {
+    static let shared = FileSessionStore()
 
-    private let service: String
-    private let account: String
+    private let fileURL: URL
     private let lock = NSLock()
 
-    init(
-        service: String = "ai.whisperanywhere.app.auth",
-        account: String = "session"
-    ) {
-        self.service = service
-        self.account = account
+    init(directory: URL? = nil, filename: String = "session.json") {
+        let dir = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("WhisperAnywhere", isDirectory: true)
+        self.fileURL = dir.appendingPathComponent(filename)
     }
 
     func loadSession() -> AuthSession? {
         lock.lock()
         defer { lock.unlock() }
 
-        var query = baseQuery()
-        query[kSecReturnData as String] = kCFBooleanTrue
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-
-        guard status != errSecItemNotFound else {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
             return nil
         }
 
-        guard status == errSecSuccess,
-              let data = result as? Data else {
+        guard let data = try? Data(contentsOf: fileURL) else {
             return nil
         }
 
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-
-        guard let session = try? decoder.decode(AuthSession.self, from: data) else {
-            return nil
-        }
-
-        return session
+        return try? decoder.decode(AuthSession.self, from: data)
     }
 
     func saveSession(_ session: AuthSession) throws {
@@ -80,24 +63,17 @@ final class KeychainSessionStore: SessionStoring, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        var query = baseQuery()
-        let attributes: [String: Any] = [
-            kSecValueData as String: data
-        ]
-
-        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if updateStatus == errSecSuccess {
-            return
+        let dir = fileURL.deletingLastPathComponent()
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            throw SessionStoreError.writeFailed(error.localizedDescription)
         }
 
-        if updateStatus != errSecItemNotFound {
-            throw SessionStoreError.unhandledStatus(updateStatus)
-        }
-
-        query[kSecValueData as String] = data
-        let addStatus = SecItemAdd(query as CFDictionary, nil)
-        guard addStatus == errSecSuccess else {
-            throw SessionStoreError.unhandledStatus(addStatus)
+        do {
+            try data.write(to: fileURL, options: [.atomic, .completeFileProtection])
+        } catch {
+            throw SessionStoreError.writeFailed(error.localizedDescription)
         }
     }
 
@@ -105,19 +81,8 @@ final class KeychainSessionStore: SessionStoring, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let status = SecItemDelete(baseQuery() as CFDictionary)
-        if status == errSecSuccess || status == errSecItemNotFound {
-            return
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            try FileManager.default.removeItem(at: fileURL)
         }
-
-        throw SessionStoreError.unhandledStatus(status)
-    }
-
-    private func baseQuery() -> [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
     }
 }

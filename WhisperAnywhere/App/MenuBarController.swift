@@ -89,7 +89,7 @@ final class MenuBarController: ObservableObject {
     init(
         config: AppConfig? = nil,
         inMemoryKeyProvider: InMemoryAPIKeyProvider = .shared,
-        sessionStore: SessionStoring = KeychainSessionStore.shared,
+        sessionStore: SessionStoring = FileSessionStore.shared,
         backendAuthClient: BackendAuthenticating = BackendAuthClient(),
         googleSignInService: GoogleSignInProviding? = nil,
         configurationPresenter: ConfigurationPresenting = ConfigurationWindowController(),
@@ -189,14 +189,16 @@ final class MenuBarController: ObservableObject {
         readinessStatus.label
     }
 
+    static let idleMenuIconName = "waveform"
+
     var menuIconName: String {
         switch dictationState {
         case .idle:
-            return "mic"
+            return Self.idleMenuIconName
         case .recording:
-            return "mic.fill"
-        case .transcribing:
             return "waveform.circle.fill"
+        case .transcribing:
+            return "waveform.circle"
         case .editing:
             return "sparkles"
         case .inserting:
@@ -218,7 +220,7 @@ final class MenuBarController: ObservableObject {
         }
 
         refreshPermissions()
-        showConfigurationOnFirstLaunchIfNeeded()
+        openConfiguration()
 
         do {
             try fnMonitor.start()
