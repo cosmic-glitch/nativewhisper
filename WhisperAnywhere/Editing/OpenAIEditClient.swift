@@ -81,7 +81,7 @@ struct OpenAIEditClient: TextEditing {
         let request = try makeRequest(selectedText: selectedText, instructions: instructions)
         Self.persistRequestLog(for: request)
         Self.logger.info(
-            "Submitting edit request model=gpt-5-nano selectedChars=\(selectedText.count, privacy: .public) instructionChars=\(instructions.count, privacy: .public)"
+            "Submitting edit request model=gpt-5-mini selectedChars=\(selectedText.count, privacy: .public) instructionChars=\(instructions.count, privacy: .public)"
         )
         let (data, response) = try await session.data(for: request)
 
@@ -124,16 +124,18 @@ struct OpenAIEditClient: TextEditing {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let requestBody = ChatRequest(
-            model: "gpt-5-nano",
+            model: "gpt-5-mini",
             reasoningEffort: "minimal",
             messages: [
                 ChatMessage(
                     role: "system",
                     content: """
-                    You are a precise text editor.
-                    Apply the spoken edit instructions to the selected text and return only the final edited text.
+                    You are a precise voice-text editor.
+                    The selected text and the spoken edit instructions both come from speech transcription, so either may contain recognition errors, false starts, filler words, self-corrections, or imprecise wording.
+                    Infer the user's intended final text from both inputs. Treat the edit instructions as the main signal, but do not follow obvious transcription mistakes literally.
                     If the user spells a word letter-by-letter (for example: "replace with S T A C K"), infer the intended word and apply that replacement.
                     Do not force all-uppercase just because letters were spoken individually; use normal casing that fits the instruction and surrounding text.
+                    Make the smallest edit that best matches the likely intent, and return only the final edited text.
                     """
                 ),
                 ChatMessage(

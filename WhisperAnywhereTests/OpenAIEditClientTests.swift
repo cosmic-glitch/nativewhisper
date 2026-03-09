@@ -3,7 +3,7 @@ import XCTest
 @testable import WhisperAnywhere
 
 final class OpenAIEditClientTests: XCTestCase {
-    func testMakeRequestUsesGPT5NanoAndIncludesEditPayload() throws {
+    func testMakeRequestUsesGPT5MiniAndIncludesEditPayload() throws {
         let session = MockEditHTTPSession()
         let client = OpenAIEditClient(
             config: AppConfig(openAIKey: "secret", model: "unused", language: "en"),
@@ -19,7 +19,7 @@ final class OpenAIEditClientTests: XCTestCase {
 
         let body = try XCTUnwrap(request.httpBody)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        XCTAssertEqual(json["model"] as? String, "gpt-5-nano")
+        XCTAssertEqual(json["model"] as? String, "gpt-5-mini")
         XCTAssertEqual(json["reasoning_effort"] as? String, "minimal")
         XCTAssertNil(json["temperature"])
 
@@ -28,8 +28,11 @@ final class OpenAIEditClientTests: XCTestCase {
         XCTAssertEqual(messages[0]["role"] as? String, "system")
         XCTAssertEqual(messages[1]["role"] as? String, "user")
         let systemContent = try XCTUnwrap(messages[0]["content"] as? String)
+        XCTAssertTrue(systemContent.contains("both come from speech transcription"))
+        XCTAssertTrue(systemContent.contains("Treat the edit instructions as the main signal"))
         XCTAssertTrue(systemContent.contains("spells a word letter-by-letter"))
         XCTAssertTrue(systemContent.contains("Do not force all-uppercase"))
+        XCTAssertTrue(systemContent.contains("Make the smallest edit"))
         XCTAssertTrue((messages[1]["content"] as? String)?.contains("Original text") == true)
         XCTAssertTrue((messages[1]["content"] as? String)?.contains("Shorten it") == true)
     }
